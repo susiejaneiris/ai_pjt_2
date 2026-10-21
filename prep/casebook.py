@@ -29,8 +29,6 @@ import json
 import re
 from pathlib import Path
 
-from pypdf import PdfReader
-
 from config import DATA_DIR
 from prep.item_text import load_items
 
@@ -73,6 +71,7 @@ def toc_key(text: str) -> str:
 
 
 def parse_volume(volume: str) -> list[dict]:
+    from pypdf import PdfReader     # PDF → JSON 변환 때만 필요 — 앱은 casebook.json 만 읽는다
     reader = PdfReader(PDF_DIR / VOLUMES[volume])
     cases, case = [], None
     chapter = section = ""

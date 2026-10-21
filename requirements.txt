@@ -25,3 +25,7 @@ typing-extensions==4.16.0
 fastapi==0.141.1
 uvicorn[standard]==0.52.4
 pydantic==2.13.5
+
+# 데이터 준비 스크립트 전용 (앱 실행에는 필요 없음)
+pypdf==5.4.0          # prep/casebook.py — 법령해석 사례집 PDF → data/casebook.json
+pillow==12.3.0        # scripts/cut_mascot.py — 마스코트 이미지 자르기
