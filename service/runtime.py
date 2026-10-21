@@ -47,9 +47,27 @@ class Runtime:
         return list(docs.values())
 
 
-def build_runtime() -> Runtime:
-    """GMS_KEY 가 없으면 MissingKeyError — 화면에서 안내로 바꾼다."""
+def ensure_meta_index(meta: Chroma) -> int:
+    """law_meta 가 비어 있으면 data/items.json 으로 바로 색인한다 (scripts/build_index.py 와 같은 내용).
+
+    배포 서버(Streamlit Community Cloud 등)에는 vectorstore/ 가 없다 — 저장소에 올리지 않으므로.
+    처음 켜질 때 한 번 법률 108건을 임베딩한다 (약 20초). 외부 문서(law_docs)는 질문할 때 모은다.
+    """
+    if count(meta) == 0:
+        from langchain_core.documents import Document
+        from prep.item_text import build_item_text, item_metadata, load_items
+        from store.vectorstore import upsert
+        items = load_items()
+        upsert(meta, [Document(page_content=build_item_text(i), metadata=item_metadata(i)) for i in items],
+               [i["item_id"] for i in items])
+    return count(meta)
+
+
+def build_runtime(auto_index: bool = True) -> Runtime:
+    """GMS_KEY 가 없으면 MissingKeyError — 화면에서 안내로 바꾼다. 색인이 비어 있으면 먼저 만든다."""
     embeddings = get_embeddings()
     meta, docs = get_meta(embeddings), get_docs(embeddings)
+    if auto_index:
+        ensure_meta_index(meta)
     llm = get_chat_model()
     return Runtime(meta=meta, docs=docs, llm=llm, graph=build_graph(meta, docs, llm))

@@ -189,7 +189,7 @@ def get_items() -> list[dict]:
     return load_items()
 
 
-@st.cache_resource(show_spinner=False)
+@st.cache_resource(show_spinner="로우가 법률 목록을 정리하는 중이에요… (처음 한 번, 20초쯤)")
 def get_runtime():
     return build_runtime()
 
