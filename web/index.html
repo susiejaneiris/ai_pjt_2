@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>내일의 법</title>
+  <meta name="description" content="내 일에 필요한 법, 내일을 위한 지식. 생활 속 궁금한 법을 근거와 함께 알려 주는 청년 생활법령 서비스">
+  <link rel="icon" href="/mascot/avatar.png">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="no-anim">
+  <header class="bench">
+    <div class="bench-inner">
+      <a class="brand" href="/" id="home">
+        <img src="/mascot/scale.png" alt="">
+        <span>
+          <span class="brand-name">내일의 법</span><br>
+          <span class="brand-slogan">내 일에 필요한 법, 내일을 위한 지식.</span>
+        </span>
+      </a>
+      <span class="bench-status" id="status">확인 중…</span>
+      <button class="menu-btn" id="menu" aria-controls="docket" aria-expanded="false">법률 목록</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <!-- 사건 목록: 법률 고르기 (F2009) -->
+    <aside class="docket collapsed" id="docket">
+      <div class="docket-body">
+        <h2>법률 고르기</h2>
+        <input class="search" id="lawSearch" type="search" placeholder="법률 이름으로 찾기" aria-label="법률 이름으로 찾기">
+        <div class="chips" id="categories"></div>
+        <ul class="law-list" id="lawList"></ul>
+        <div class="docket-foot" id="docketFoot"></div>
+      </div>
+    </aside>
+
+    <main id="main" aria-live="polite"></main>
+  </div>
+
+  <footer>
+    <div class="footer-brand"><img src="/mascot/scale.png" alt=""><span class="footer-logo">내일의 법</span></div>
+    <span>⚖️ 이 서비스는 법령 정보를 안내할 뿐 법률 자문을 대신하지 않습니다. 구체적인 사안은 대한법률구조공단(☎132) 등 법률 전문가와 상담하세요.
+      <br>출처: 국가법령정보센터 Open API · 한국어 위키백과(CC BY-SA 4.0) · 법제처 「2024 법령해석 사례집」(공공누리 제4유형)</span>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
