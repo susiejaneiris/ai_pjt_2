@@ -243,6 +243,21 @@ for key, default in {"histories": {}, "factchecks": {}, "explains": {}, "found":
 
 # ── 공통 그리기 ───────────────────────────────────────────────────────────────────
 
+def input_loading(key: str):
+    """검색하는 동안 입력칸의 '↵ Enter로 검색' 배지를 숨기고 같은 자리에서 로딩 아이콘을 돌린다.
+    돌려준 자리(st.empty)를 .empty() 하면 원래대로. key — 그 입력칸의 위젯 key (.st-key-<key>)."""
+    spot = st.empty()
+    spot.markdown(f"""<style>
+.st-key-{key} [data-testid="InputInstructions"] {{ display: none !important; }}
+.st-key-{key} [data-testid="stTextInputRootElement"] {{ position: relative; }}
+.st-key-{key} [data-testid="stTextInputRootElement"]::after {{ content: ""; position: absolute; right: 18px; top: 50%;
+  width: 18px; height: 18px; margin-top: -9px; border-radius: 50%; border: 3px solid var(--gold-soft);
+  border-top-color: var(--navy); animation: input-spin .8s linear infinite; }}
+@keyframes input-spin {{ to {{ transform: rotate(360deg); }} }}
+</style>""", unsafe_allow_html=True)
+    return spot
+
+
 def note(pose: str, text_html: str, width: int = 84, cls: str = "") -> None:
     st.markdown(f"<div class='note'>{mascot_img(pose, width, cls)}<div>{text_html}</div></div>",
                 unsafe_allow_html=True)
@@ -444,12 +459,14 @@ def render_find_laws() -> None:
     query = pending or (condition.strip() if submitted else "")
 
     if query:
+        loading = input_loading("find_condition")
         with st.spinner("로우가 법률 목록을 살펴보는 중…"):
             try:
                 st.session_state.found = (query, find_laws(rt, query, items_by_id))
             except Exception as error:
                 log.exception("find_laws")
                 st.error(friendly_error(error))
+        loading.empty()
 
     if st.session_state.found:
         query, results = st.session_state.found
@@ -592,12 +609,14 @@ if not item:
             if named:
                 st.session_state.search_result = (q, [{"item": i, "reason": ""} for i in named[:6]], "name")
             else:
+                loading = input_loading("main_query")
                 with st.spinner("로우가 상황에 맞는 법을 찾는 중…"):
                     try:
                         st.session_state.search_result = (q, find_laws(rt, q, items_by_id), "situation")
                     except Exception as error:
                         log.exception("find_laws")
                         st.error(friendly_error(error))
+                loading.empty()
 
         panel = st.session_state.panel
         if panel == "laws":

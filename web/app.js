@@ -231,7 +231,8 @@ function renderMain() {
         <form id="mainSearch" class="main-search" role="search">
           <input name="q" type="search" autocomplete="off" maxlength="500" aria-label="궁금한 상황이나 법률 이름"
                  placeholder="궁금한 상황이나 법률 이름  예) 알바하다가 다쳤어요" value="${esc(state.search_q || "")}">
-          <button class="btn gold">검색</button>
+          ${state.searching ? `<span class="search-spinner" role="status" aria-label="검색 중"></span>` : ""}
+          <button class="btn gold" ${state.searching ? "disabled" : ""}>검색</button>
         </form>
         <div class="small-buttons">
           ${[["laws", "📚 법률 고르기"], ["popular", "⭐ 자주 찾는 법"], ["situation", "🔎 상황으로 법 찾기"]]
@@ -375,6 +376,10 @@ async function runMainSearch(q) {
   } finally {
     state.busy = false;
     state.searching = false;
+    // 결과 영역만 다시 그리므로 검색창의 로딩 아이콘은 직접 걷는다
+    $("#mainSearch .search-spinner")?.remove();
+    const button = $("#mainSearch .btn");
+    if (button) button.disabled = false;
   }
   renderLandingPanel();
   positionLanding();

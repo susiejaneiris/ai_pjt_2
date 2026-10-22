@@ -337,6 +337,9 @@ body.landing footer img { width: 40px; }
 .main-search:focus-within { border-color: var(--gold); }
 .main-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; padding: 10px 18px; font-size: 1.05rem; }
 .main-search .btn { border-radius: 999px; padding: 10px 26px; font-weight: 700; }
+.search-spinner { align-self: center; flex: none; width: 18px; height: 18px; margin-right: 6px; border-radius: 50%;
+  border: 3px solid var(--gold-soft, #f3e3b5); border-top-color: var(--navy); animation: search-spin .8s linear infinite; }
+@keyframes search-spin { to { transform: rotate(360deg); } }
 
 .small-buttons { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .small-btn {
