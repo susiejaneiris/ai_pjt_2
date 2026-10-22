@@ -1,4 +1,4 @@
-"""내일의 법 — 생활법령 RAG 서비스 (Streamlit 화면 · F2009 ~ F2012).
+"""내일의 법 — 청년을 위한 생활법령 RAG 서비스 — 생활 다방면 법률 276건 (Streamlit 화면 · F2009 ~ F2012).
 
 실행:
     python -m scripts.build_index      # 처음 한 번 (법률 메타데이터 색인)
