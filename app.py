@@ -320,6 +320,26 @@ def cite_badges(text: str) -> str:
 BOLD = re.compile(r"\*\*(.+?)\*\*", re.S)
 
 
+GLUED_HEADING = re.compile(r"(?<=[^\s#*>-])[ \t]*(#{2,6})[ \t]+")   # 문장 끝에 붙은 "### 제목" (# · 목록 기호 뒤는 제외)
+LOOSE_HEADING = re.compile(r"[ \t>*-]*(#{1,6})[ \t]*(\S.*)")        # 들여쓰기 · 목록 기호 뒤의 "### 제목"
+
+
+def tidy_headings(text: str) -> str:
+    """LLM 이 쓴 제목(###)이 마크다운 제목으로 인식되게 다듬는다 — 안 그러면 ### 가 글자로 보인다.
+    "…예요. ### 한눈에 보기" 는 새 줄로 떼고, "  ### …" · "- ### …" 의 들여쓰기 · 기호는 지우고, 앞에 빈 줄을 둔다."""
+    lines = []
+    for line in GLUED_HEADING.sub(lambda m: "\n" + m.group(1) + " ", text).split("\n"):
+        found = LOOSE_HEADING.fullmatch(line)
+        if found:
+            if lines and lines[-1].strip():
+                lines.append("")
+            title = re.sub(r"^(#+[ \t]*)+", "", found.group(2)).strip()   # "## ### 한눈에 보기" 처럼 겹친 # 도 지운다
+            lines.append(f"{found.group(1)} {title}")
+        else:
+            lines.append(line)
+    return "\n".join(lines)
+
+
 def answer_markdown(text: str) -> str:
     """답변의 **굵게** 를 <b> 로 직접 바꾼다 — 화면에 ** 가 그대로 보이지 않게.
 
@@ -327,7 +347,7 @@ def answer_markdown(text: str) -> str:
     굵게로 인정하지 않아 ** 를 글자로 남긴다 (한국어에서 자주 생긴다). 먼저 HTML 을 이스케이프해
     답변에 섞인 태그는 글자로만 보이게 하고, 짝이 맞지 않아 남은 ** 는 지운다.
     """
-    text = html.escape(text, quote=False)
+    text = html.escape(tidy_headings(text), quote=False)
     return BOLD.sub(r"<b>\1</b>", text).replace("**", "")
 
 

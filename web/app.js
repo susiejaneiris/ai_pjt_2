@@ -45,11 +45,13 @@ function md(text) {
   const out = [];
   let list = null;
   const close = () => { if (list) { out.push(`</${list}>`); list = null; } };
+  // 문장 끝에 붙은 "### 제목" 은 새 줄로 뗀다 — 안 그러면 ### 가 글자로 보인다 (app.py tidy_headings 와 같게)
+  text = String(text ?? "").replace(/([^\s#*>-])[ \t]*(#{2,6})[ \t]+/g, "$1\n$2 ");
   for (const raw of esc(text).split("\n")) {
     const line = raw.trim();
     const bullet = line.match(/^[-*•]\s+(.*)/);
     const numbered = line.match(/^\d+[.)]\s+(.*)/);
-    const heading = line.match(/^#{1,4}\s+(.*)/);
+    const heading = line.match(/^[>*-]?\s*#{1,6}\s*(?:#+\s*)*(\S.*)/);   // 목록 기호 뒤 · 겹친 # 도 제목으로
     if (bullet || numbered) {
       const tag = bullet ? "ul" : "ol";
       if (list !== tag) { close(); out.push(`<${tag}>`); list = tag; }
