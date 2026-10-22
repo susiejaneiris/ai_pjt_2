@@ -571,7 +571,7 @@ async function runFind(condition) {
 document.addEventListener("click", (event) => {
   const target = event.target.closest("button, a");
   if (!target) return;
-  if (target.id === "home") { event.preventDefault(); state.selected = null; state.panel = null; state.searchResult = null; renderDocket(); renderDocketFoot(); renderMain(); return; }
+  if (target.id === "home") { event.preventDefault(); state.selected = null; state.panel = null; state.searchResult = null; state.found = null; renderDocket(); renderDocketFoot(); renderMain(); return; }
   if (target.id === "menu") {
     const docket = $("#docket");
     docket.classList.toggle("collapsed");

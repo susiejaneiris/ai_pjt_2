@@ -330,9 +330,16 @@ def run_with_status(label: str, task):
 # ── 사이드바: 법률 고르기 · 색인 상태 ───────────────────────────────────────────────
 
 def go_home() -> None:
+    """처음 접속한 화면으로 — 검색어 · 검색 결과 · 상황 찾기 결과까지 비운다 (법률별 대화 기록은 남긴다, F2009)."""
     st.session_state.item_id = None
     st.session_state.shown_item = None          # 같은 법률에 다시 들어와도 맨 위부터
     st.session_state.panel = None
+    st.session_state.search_result = None
+    st.session_state.found = None
+    st.session_state.auto_question = None
+    for key in ("main_query", "find_condition", "landing_law_search"):
+        st.session_state[key] = ""
+    st.session_state.landing_category = None
 
 
 item = items_by_id.get(st.session_state.get("item_id"))
@@ -418,7 +425,8 @@ def render_find_laws() -> None:
         if chips[n % 2].button(situation, key=f"chip_{n}", width="stretch"):
             pending = situation
     with st.form("find_form", border=False):
-        condition = st.text_input("내 상황", placeholder="예) 월세 계약을 했는데 집주인이 수리를 안 해 줘요")
+        condition = st.text_input("내 상황", placeholder="예) 월세 계약을 했는데 집주인이 수리를 안 해 줘요",
+                                  key="find_condition")
         submitted = st.form_submit_button("🔎 찾아보기", type="primary")
     query = pending or (condition.strip() if submitted else "")
 
@@ -551,7 +559,7 @@ if not item:
         with st.container(key="main_search"):
             with st.form("main_search_form", border=False):
                 box, go = st.columns([5, 1], vertical_alignment="bottom")
-                query = box.text_input("검색", placeholder="궁금한 상황이나 법률 이름  예) 알바하다가 다쳤어요",
+                query = box.text_input("검색", placeholder="궁금한 상황이나 법률 이름  예) 알바하다가 다쳤어요", key="main_query",
                                        label_visibility="collapsed")
                 searched = go.form_submit_button("검색", type="primary", width="stretch")
 
