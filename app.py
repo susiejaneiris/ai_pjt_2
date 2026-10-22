@@ -24,7 +24,6 @@ import re
 from functools import lru_cache
 
 import streamlit as st
-import streamlit.components.v1 as components
 from openai import APIConnectionError, AuthenticationError
 
 from config import ROOT
@@ -630,8 +629,8 @@ if not item:
 if st.session_state.get("shown_item") != item["item_id"]:
     st.session_state.shown_item = item["item_id"]
     with st.container(key="scroll_top"):
-        components.html("<script>const m = window.parent.document.querySelector('[data-testid=\"stMain\"]');"
-                        "if (m) m.scrollTo({top: 0});</script>", height=0)
+        st.iframe("<script>const m = window.parent.document.querySelector('[data-testid=\"stMain\"]');"
+                  "if (m) m.scrollTo({top: 0});</script>", height=1)      # 고정 문자열만 — 사용자 입력은 넣지 않는다
 
 date = item["effective_date"]
 st.markdown(f"""
