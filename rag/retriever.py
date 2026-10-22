@@ -11,7 +11,7 @@ from langchain_core.documents import Document
 from store.vectorstore import get_by_id
 
 SOURCE_LABELS = {"meta": "항목 메타데이터", "article": "조문", "prec": "판례",
-                 "expc": "법령해석례(PDF)", "qa": "생활법령 백문백답", "wiki": "위키백과"}
+                 "expc": "법령해석례(PDF)", "qa": "생활법령 Q&A", "wiki": "위키백과"}
 SOURCE_ORDER = {"meta": 0, "article": 1, "prec": 2, "expc": 3, "qa": 4, "wiki": 5}
 
 

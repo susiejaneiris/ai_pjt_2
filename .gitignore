@@ -7,6 +7,8 @@ AI코어프로젝트_2회차_요구사항정의서.pdf
 # 실행하면 생기는 것
 vectorstore/
 data/collected.json
+# 원본 PDF — 변환본 JSON 만 올린다
+data/pdf/
 __pycache__/
 venv/
 .venv/

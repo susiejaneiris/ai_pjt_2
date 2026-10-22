@@ -139,20 +139,36 @@ def bigrams(text: str) -> set[str]:
     return {text[i:i + 2] for i in range(len(text) - 1)}
 
 
-def search_qa(item: dict, texts: list[str], limit: int) -> list[dict]:
-    """선택한 법률과 연결된 백문백답 중, 질문 · 검색어와 글자 2개씩 겹치는 정도가 큰 순으로.
+UNLINKED_MIN_OVERLAP = 5      # 우리 법률과 연결되지 않은 어린이 생활법령 주제를 후보로 올리는 최소 겹침(bigram 수)
+
+
+def row_question(row: dict) -> str:
+    """백문백답은 질문, 어린이 생활법령은 상황 이야기(없으면 본문 앞부분)."""
+    return row.get("question") or row.get("story") or row.get("answer", "")[:200]
+
+
+def search_qa(item: dict, texts: list[str], limit: int, rows: list[dict] | None = None) -> list[dict]:
+    """선택한 법률과 연결된 생활법령 Q&A 중, 질문 · 검색어와 글자 2개씩 겹치는 정도가 큰 순으로.
 
     한국어는 띄어쓰기 · 조사가 달라 낱말 단위로는 잘 안 맞는다 → 두 글자 조각(bigram) 겹침으로 본다.
+    rows 를 주지 않으면 백문백답만. 어린이 생활법령(prep/kids_guide.py) 중 우리 법률에 없는 법만 인용해
+    연결이 빈 주제는, 검색어와 많이 겹칠 때만 어느 법률에서든 후보로 올린다 (최종 선택은 프롬프트 2).
     로컬 파일이라 외부 호출이 없다.
     """
     query_grams = set().union(*(bigrams(t) for t in texts)) if texts else set()
-    linked = [r for r in load_qa() if item["item_id"] in r.get("item_ids", [])]
+
+    def grams(row: dict) -> set[str]:
+        return bigrams(row["subject"] + row_question(row))
 
     def score(row: dict) -> float:
-        grams = bigrams(row["subject"] + row["question"])
-        return len(grams & query_grams) / (len(grams) ** 0.5 or 1)
+        g = grams(row)
+        return len(g & query_grams) / (len(g) ** 0.5 or 1)
 
-    return sorted(linked, key=score, reverse=True)[:limit]
+    candidates = [r for r in (load_qa() if rows is None else rows)
+                  if item["item_id"] in r.get("item_ids", [])
+                  or (r.get("kind") == "kids" and not r.get("item_ids")
+                      and len(grams(r) & query_grams) >= UNLINKED_MIN_OVERLAP)]
+    return sorted(candidates, key=score, reverse=True)[:limit]
 
 
 if __name__ == "__main__":

@@ -18,7 +18,7 @@ from functools import lru_cache
 import requests
 
 from config import COLLECTED_JSON, FALLBACK_DIR
-from prep import casebook, easylaw_qa, law_api, wiki_api
+from prep import casebook, easylaw_qa, kids_guide, law_api, wiki_api
 from rag.llm import parse_json
 from rag.prompts import QUERY_PROMPT, SELECT_PROMPT
 
@@ -61,7 +61,17 @@ def prec_docs(item: dict, prec: dict, query: str) -> list[dict]:
 
 
 def qa_doc(item: dict, qa: dict, query: str) -> dict:
-    """생활법령 백문백답 — 질문 · 답 · 관련 법령을 한 문서로. 일상어 질문과 조문을 잇는 다리 역할."""
+    """생활법령 Q&A — 일상어 질문과 조문을 잇는 다리 역할.
+    백문백답(질문 · 답 · 관련 법령)과 어린이 생활법령 PDF(상황 · 설명, URL 대신 책 · 쪽)를 한 문서로."""
+    if qa.get("kind") == "kids":
+        story = f"상황: {qa['story']}\n\n" if qa["story"] else ""
+        text = f"주제: {qa['subject']}\n\n{story}설명: {qa['answer']}"
+        return {
+            "item_id": item["item_id"], "item_name": item["label"],
+            "doc_id": qa["qa_id"], "source_type": "qa",
+            "title": f"어린이 생활법령: {qa['subject']}", "header": f"어린이 생활법령 — {qa['subject']} ({qa['citation']})",
+            "url": "", "citation": qa["citation"], "date": "201212", "query": query, "text": text,
+        }
     laws = "\n".join(qa.get("laws", []))
     text = f"질문: {qa['question']}\n\n답: {qa['answer']}"
     if laws:
@@ -174,8 +184,9 @@ def gather_candidates(item: dict, queries: list[str], settings: dict, skip_doc_i
     # 법령해석례는 로컬 PDF 변환본에서 찾는다 (외부 호출 없음)
     expcs = [{**c, "query": queries[0]} for c in casebook.search_cases(item, queries, limits["expc"])
              if f"{c['doc_id']}-qa" not in skip_doc_ids]
-    # 생활법령 백문백답도 로컬 변환본(data/qa.json)에서 — 선택한 법률과 연결된 것 중 질문 · 검색어와 가까운 순
-    qas = [{**q, "query": queries[0]} for q in easylaw_qa.search_qa(item, queries, limits.get("qa", 8))
+    # 생활법령 Q&A 도 로컬 변환본에서 — 백문백답(data/qa.json) + 어린이 생활법령(data/kids_guide.json)
+    qa_rows = easylaw_qa.load_qa() + kids_guide.load_guide()
+    qas = [{**q, "query": queries[0]} for q in easylaw_qa.search_qa(item, queries, limits.get("qa", 8), qa_rows)
            if q["qa_id"] not in skip_doc_ids]
     return {"article": articles, "prec": prec_list, "expc": expcs, "qa": qas, "wiki": list(wikis.values())}
 
@@ -187,7 +198,7 @@ def format_candidates(candidates: dict) -> dict:
         "article_list": numbered(f"{a['source']} {a['article']}({a['title']})" for a in candidates["article"]),
         "prec_list": numbered(f"{p['court']} {p['case_no']} ({p['date']}) {p['case_name'][:120]}" for p in candidates["prec"]),
         "expc_list": numbered(f"{c['case_no']} {c['title'][:150]}" for c in candidates["expc"]),
-        "qa_list": numbered(f"[{q['subject']}] {q['question'][:120]}" for q in candidates["qa"]),
+        "qa_list": numbered(f"[{q['subject']}] {easylaw_qa.row_question(q)[:120]}" for q in candidates["qa"]),
         "wiki_list": numbered(f"{w['title']} — {w['snippet'][:100]}" for w in candidates["wiki"]),
     }
 
@@ -257,7 +268,7 @@ def collect_external(item: dict, question: str, report: CollectReport, settings:
     report.candidate_counts = {k: len(v) for k, v in candidates.items()}
 
     on_step(f"후보 조문 {len(candidates['article'])} · 판례 {len(candidates['prec'])} · "
-            f"법령해석례 {len(candidates['expc'])} · 백문백답 {len(candidates['qa'])} · "
+            f"법령해석례 {len(candidates['expc'])} · 생활법령 Q&A {len(candidates['qa'])} · "
             f"위키 {len(candidates['wiki'])}건 중 선별하는 중")
     selected = select_candidates(item, question, candidates, settings, llm) if any(candidates.values()) \
         else {"article": [], "prec": [], "expc": [], "qa": [], "wiki": []}
@@ -279,7 +290,7 @@ def collect_external(item: dict, question: str, report: CollectReport, settings:
     report.dropped = (
         [f"{p['court']} {p['case_no']}" for p in candidates["prec"] if p not in selected["prec"]]
         + [f"법령해석례 {c['case_no']}" for c in candidates["expc"] if c not in selected["expc"]]
-        + [f"백문백답 {q['subject']}" for q in candidates["qa"] if q not in selected["qa"]]
+        + [f"생활법령 Q&A {q['subject']}" for q in candidates["qa"] if q not in selected["qa"]]
         + [w["title"] for w in candidates["wiki"] if w not in selected["wiki"]]
     )
     return docs
