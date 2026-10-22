@@ -197,7 +197,8 @@ async function renderDocketFoot() {
   } catch { foot.textContent = ""; }
 }
 
-function select(itemId) {
+/** ask — 상황 검색에 적은 문장. 대화가 열리면 그 문장을 첫 질문으로 바로 물어본다 (다시 적지 않게). */
+function select(itemId, ask = "") {
   state.selected = itemId;
   state.tab = "chat";
   const item = state.byId[itemId];
@@ -208,6 +209,7 @@ function select(itemId) {
   renderDocketFoot();
   renderMain();
   window.scrollTo({ top: 0, behavior: "smooth" });
+  if (ask && state.status.ok) sendQuestion(ask);
 }
 
 // ── 화면 ───────────────────────────────────────────────────────────────────────
@@ -327,7 +329,7 @@ function renderLandingPanel() {
       ${results.length ? `<div class="results">${results.map((r) => `
         <div class="result"><span class="badge" style="align-self:flex-start">${esc(r.category)}</span>
           <h3>${esc(r.label)}</h3>${r.reason ? `<p>${esc(r.reason)}</p>` : ""}
-          <button class="btn ghost" data-item="${r.item_id}">이 법으로 물어보기 →</button></div>`).join("")}</div>`
+          <button class="btn ghost" data-item="${r.item_id}" ${kind === "situation" ? `data-ask="${esc(q)}"` : ""}>이 법으로 물어보기 →</button></div>`).join("")}</div>`
         : note("thinking", "꼭 맞는 법을 찾지 못했어요. 상황을 조금 더 구체적으로 적어 주세요.")}`;
   } else {
     box.innerHTML = "";
@@ -543,7 +545,7 @@ function findResultHtml() {
     <div class="results">${state.found.results.map((r) => `
       <div class="result"><span class="badge" style="align-self:flex-start">${esc(r.category)}</span>
         <h3>${esc(r.label)}</h3><p>${esc(r.reason)}</p>
-        <button class="btn ghost" data-item="${r.item_id}">이 법으로 물어보기 →</button></div>`).join("")}</div>`;
+        <button class="btn ghost" data-item="${r.item_id}" data-ask="${esc(state.found.condition)}">이 법으로 물어보기 →</button></div>`).join("")}</div>`;
 }
 
 async function runFind(condition) {
@@ -580,7 +582,7 @@ document.addEventListener("click", (event) => {
   if (target.dataset.category !== undefined) {
     state.category = target.dataset.category || null; renderDocket(); if ($("#panelLawList")) renderPanelLaws(); return;
   }
-  if (target.dataset.item) { select(target.dataset.item); return; }
+  if (target.dataset.item) { select(target.dataset.item, target.dataset.ask || ""); return; }
   if (target.dataset.tab) { state.tab = target.dataset.tab; renderMain(); return; }
   if (target.dataset.question) { sendQuestion(target.dataset.question); return; }
   if (target.dataset.situation) {

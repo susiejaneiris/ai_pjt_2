@@ -22,6 +22,7 @@ class Result:
     notices: list[str] = field(default_factory=list)
     report: CollectReport | None = None
     elapsed: float = 0.0
+    offline: bool = False                    # AI 사용 한도가 끝나 원문만 보여 준 결과 (service/offline.py)
 
 
 def index_documents(rt: Runtime, raw_docs: list[dict]) -> int:

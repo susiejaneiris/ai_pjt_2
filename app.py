@@ -31,9 +31,10 @@ from prep.casebook import KOGL_NOTICE
 from prep.disclaimer import LEGAL, notices_for
 from prep.item_text import load_items
 from rag.prompts import NOT_FOUND
-from service.chat import ask
+
 from service.features import article_choices, explain, factcheck
 from service.find_laws import find_laws
+from service.offline import QUOTA_MESSAGE, ask_or_offline, is_quota_error
 from service.runtime import build_runtime
 from store.vectorstore import MissingKeyError
 
@@ -199,6 +200,8 @@ def friendly_error(error: Exception) -> str:
     """화면에는 쉬운 안내만 — 키 · 프롬프트 · 오류 추적 정보는 보여 주지 않는다 (NF2004)."""
     if isinstance(error, MissingKeyError):
         return "GMS_KEY가 설정되지 않았어요. `.env` 파일에 키를 넣고 다시 실행해 주세요."
+    if is_quota_error(error):
+        return QUOTA_MESSAGE
     if isinstance(error, AuthenticationError):
         return "GMS 키가 만료되었거나 올바르지 않아요. 키를 다시 발급받아 `.env`에 넣어 주세요."
     if isinstance(error, APIConnectionError):
@@ -228,8 +231,10 @@ def note(pose: str, text_html: str, width: int = 84, cls: str = "") -> None:
                 unsafe_allow_html=True)
 
 
-def select_item(item_id: str) -> None:
-    """카드 · 바로가기 → 그 법률의 대화로 (위젯 key 를 콜백에서 바꿔야 선택이 한 번에 반영된다)."""
+def select_item(item_id: str, question: str | None = None) -> None:
+    """카드 · 바로가기 → 그 법률의 대화로 (위젯 key 를 콜백에서 바꿔야 선택이 한 번에 반영된다).
+    question — 상황 검색에 적은 문장. 대화가 열리면 그 문장을 첫 질문으로 바로 물어본다 (다시 적지 않게)."""
+    st.session_state.auto_question = (item_id, question) if question else None
     st.session_state.category = items_by_id[item_id]["category"]
     st.session_state.law_search = ""
     st.session_state.panel = None
@@ -299,7 +304,9 @@ def run_with_status(label: str, task):
 
         outcome = result[1] if isinstance(result, tuple) else result
         report, elapsed = outcome.report, outcome.elapsed
-        if report and report.fallback:
+        if getattr(outcome, "offline", False):
+            summary = f"AI 사용 한도가 끝나 관련 원문만 찾아 보여 드려요 · {elapsed:.0f}초"
+        elif report and report.fallback:
             summary = f"외부 연결이 안 돼 저장된 문서 묶음으로 답했어요 · {elapsed:.0f}초"
         elif report and report.new_queries:
             summary = f"새 문서 {len(report.raw_docs)}건을 모아 답했어요 · {elapsed:.0f}초"
@@ -432,7 +439,8 @@ def render_find_laws() -> None:
                             unsafe_allow_html=True)
                 st.caption(r["reason"])
                 st.button("이 법으로 물어보기 →", key=f"pick_{law['item_id']}",
-                          on_click=select_item, args=(law["item_id"],))
+                          on_click=select_item, args=(law["item_id"], query),
+                          help="적은 상황을 이 법률에 바로 물어봐요")
 
 
 # ── 처음 화면 — 가운데 검색창 + 작은 버튼 (법률을 고르기 전) ─────────────────────────
@@ -442,7 +450,8 @@ def toggle_panel(name: str) -> None:
     st.session_state.panel = None if st.session_state.get("panel") == name else name
 
 
-def render_law_cards(results: list[dict]) -> None:
+def render_law_cards(results: list[dict], question: str | None = None) -> None:
+    """question 이 있으면(상황 검색 결과) 카드를 눌렀을 때 그 문장을 바로 물어본다."""
     cols = st.columns(2)
     for n, r in enumerate(results):
         law = r["item"]
@@ -453,7 +462,8 @@ def render_law_cards(results: list[dict]) -> None:
             if r.get("reason"):
                 st.caption(r["reason"])
             st.button("이 법으로 물어보기 →", key=f"card_{law['item_id']}",
-                      on_click=select_item, args=(law["item_id"],))
+                      on_click=select_item, args=(law["item_id"], question),
+                      help="적은 상황을 이 법률에 바로 물어봐요" if question else None)
 
 
 def greeting_mascot() -> str:
@@ -588,7 +598,7 @@ if not item:
         q, results, kind = st.session_state.search_result
         st.caption(f"‘{q}’ " + ("— 이름이 맞는 법률" if kind == "name" else "— 상황에 맞는 법"))
         if results:
-            render_law_cards(results)
+            render_law_cards(results, question=q if kind == "situation" else None)
         else:
             note("thinking", "꼭 맞는 법을 찾지 못했어요. 상황을 조금 더 구체적으로 적어 주세요.", 72)
 
@@ -642,6 +652,11 @@ with tab_chat:
             else:
                 st.markdown(message["content"])
 
+    # 상황 검색 → "이 법으로 물어보기" 로 들어왔으면 그때 적은 문장을 바로 물어본다 (한 번만)
+    auto = st.session_state.get("auto_question")
+    if auto and auto[0] == item["item_id"]:
+        st.session_state.auto_question = None
+        pending_question = pending_question or auto[1]
     question = st.chat_input(f"{item['label']}에 대해 물어보세요", key="chat_input") or pending_question
     if question:
         history.append({"role": "user", "content": question})
@@ -649,7 +664,7 @@ with tab_chat:
             st.markdown(question)
         with thread.chat_message("assistant", avatar=mascot("avatar")):
             result, summary = run_with_status("로우가 법전을 넘기고 있어요",
-                                              lambda step: ask(rt, item, question, history[:-1], on_step=step))
+                                              lambda step: ask_or_offline(rt, item, question, history[:-1], on_step=step))
             if result:
                 message = {"role": "assistant", "content": result.answer, "cited": result.cited,
                            "warnings": result.warnings, "notices": result.notices, "summary": summary}

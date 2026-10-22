@@ -34,9 +34,10 @@ from config import ROOT
 from prep.casebook import KOGL_NOTICE
 from prep.disclaimer import notices_for, risk_types
 from prep.item_text import load_items
-from service.chat import Result, ask
+from service.chat import Result
 from service.features import article_choices, explain, factcheck
 from service.find_laws import find_laws
+from service.offline import QUOTA_MESSAGE, ask_or_offline, is_quota_error
 from service.runtime import Runtime, build_runtime
 from store.vectorstore import MissingKeyError
 
@@ -79,6 +80,8 @@ def runtime() -> Runtime:
 def friendly_error(error: Exception) -> str:
     if isinstance(error, MissingKeyError):
         return "GMS_KEY가 설정되지 않았어요. .env 파일에 키를 넣고 서버를 다시 켜 주세요."
+    if is_quota_error(error):
+        return QUOTA_MESSAGE
     if isinstance(error, AuthenticationError):
         return "GMS 키가 만료되었거나 올바르지 않아요. 키를 다시 발급받아 .env에 넣어 주세요."
     if isinstance(error, APIConnectionError):
@@ -109,6 +112,7 @@ def result_json(result: Result) -> dict:
         "answer": result.answer, "cited": cited, "warnings": result.warnings, "notices": result.notices,
         "kogl": KOGL_NOTICE if any(c["type"] == "expc" for c in cited) else "",
         "elapsed": round(result.elapsed, 1),
+        "offline": result.offline,            # AI 사용 한도가 끝나 원문만 보여 준 결과
         "report": None if report is None else {
             "queries": report.queries, "new_queries": report.new_queries, "selected": report.selected,
             "dropped": report.dropped[:10], "reused": report.reused_docs, "fallback": report.fallback,
@@ -202,7 +206,7 @@ def chat(request: ChatRequest):
     item, rt = get_item(request.item_id), ready_runtime()
     history = [{"role": m.get("role"), "content": str(m.get("content", ""))} for m in request.history
                if m.get("role") in ("user", "assistant")]
-    return stream(lambda step: ask(rt, item, request.question, history, on_step=step), result_json)
+    return stream(lambda step: ask_or_offline(rt, item, request.question, history, on_step=step), result_json)
 
 
 @app.post("/api/factcheck")
