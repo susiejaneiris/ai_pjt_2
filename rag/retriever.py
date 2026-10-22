@@ -219,7 +219,10 @@ def rerank_sources(llm, item: dict, question: str, sources: list[dict], keep: in
     order = parse_json(llm.invoke(prompt).content, default={})
     numbers = [n for n in (order.get("order", []) if isinstance(order, dict) else [])
                if isinstance(n, int) and 1 <= n <= len(rest)]
-    chosen = [rest[n - 1] for n in dict.fromkeys(numbers)][:keep] or rest[:keep]
+    chosen = [rest[n - 1] for n in dict.fromkeys(numbers)][:keep]
+    # LLM 이 몇 개만 고르고 끝내도 keep 개는 채운다 — 순서를 바로잡는 게 목적이지 근거를 줄이는 게 아니다
+    # (평가 v13: 2개만 골라 킥보드 헬멧 정답 조문이 빠졌다)
+    chosen += [s for s in rest if s not in chosen][:keep - len(chosen)]
     ordered = sorted(fixed + chosen, key=lambda s: SOURCE_ORDER.get(s["type"], 9))   # 출처 순서는 그대로 지킨다
     return [{**s, "n": n} for n, s in enumerate(ordered, start=1)]
 

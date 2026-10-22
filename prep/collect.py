@@ -19,7 +19,7 @@ from functools import lru_cache
 import requests
 
 from config import COLLECTED_JSON, FALLBACK_DIR
-from prep import casebook, easylaw_qa, kids_guide, law_api, wiki_api
+from prep import casebook, easylaw_qa, kids_guide, law_api, law_terms, wiki_api
 from rag.llm import parse_json
 from rag.prompts import ARTICLE_PICK_PROMPT, QUERY_PROMPT, SELECT_PROMPT
 
@@ -318,7 +318,8 @@ class CollectReport:
     fallback: bool = False                                # 외부 호출이 막혀 저장된 문서 묶음을 썼는지
     in_scope: bool = True                                 # 프롬프트 1 이 본 질문 범위 — False 면 수집 · 생성을 건너뛴다
     articles: list[str] = field(default_factory=list)     # 프롬프트 1 이 지목한 조문 번호 (예: ["제3조"])
-    article_docs: list[str] = field(default_factory=list) # 그 조문의 문서 id — 근거에 고정한다
+    term_articles: list[str] = field(default_factory=list) # 검색어의 법령용어와 연결된 조문 번호 (prep/law_terms.py)
+    article_docs: list[str] = field(default_factory=list) # 지목 · 연결된 조문의 문서 id — 근거에 고정한다
 
 
 EXTERNAL_ERRORS = (requests.RequestException, RuntimeError)     # 네트워크 · 한도 초과 · 인증 실패
@@ -416,8 +417,13 @@ def collect(item: dict, question: str, settings: dict, llm, on_step=lambda messa
         report.raw_docs += bundle
         report.fallback = True
 
-    if settings.get("pin_articles", True):
-        report.article_docs = article_doc_ids(item, report.articles)
+    if settings.get("term_links") and report.in_scope:
+        # 검색어의 법령용어 → 법제처가 연결해 둔 조문 (prep/law_terms.py) — 조문 지목(LLM)을 보완한다
+        on_step("법령용어와 연결된 조문을 찾는 중")
+        report.term_articles = law_terms.linked_articles(item, report.queries)
+    if settings.get("pin_articles", True) or report.term_articles:
+        labels = (report.articles if settings.get("pin_articles", True) else []) + report.term_articles
+        report.article_docs = article_doc_ids(item, list(dict.fromkeys(labels)))
     report.selected = list(dict.fromkeys(d["title"] for d in report.raw_docs))
     save_cache(cache)
     return report
