@@ -24,6 +24,7 @@ import re
 from functools import lru_cache
 
 import streamlit as st
+import streamlit.components.v1 as components
 from openai import APIConnectionError, AuthenticationError
 
 from config import ROOT
@@ -152,7 +153,11 @@ st.markdown("""
 .stTabs [role="tablist"] { gap:6px; flex-wrap:wrap; border-bottom:0; }
 .stTabs [data-testid="stTab"] { border:1px solid var(--line); border-radius:999px; padding:6px 16px; background:#fff; }
 .stTabs [data-testid="stTab"] p { font-weight:600; }
-.stTabs [data-testid="stTab"][aria-selected="true"] { background:var(--navy); border-color:var(--navy); box-shadow: inset 0 -3px 0 var(--gold); }
+.stTabs [data-testid="stTab"][aria-selected="true"] { background:var(--navy); border-color:var(--navy); }
+/* Streamlit 기본 탭 강조선(선택 탭 밑 2px) · 탭 줄 아래 구분선 — 남색 알약 밑으로 비쳐 보여서 없앤다 */
+.stTabs [role="tablist"] .react-aria-SelectionIndicator { display:none; }
+.stTabs [role="tablist"]::after { display:none; }
+.st-key-scroll_top { display:none; }
 .stTabs [data-testid="stTab"][aria-selected="true"] p { color:#fff; }
 [data-testid="stChatMessage"] { background:transparent; }
 [data-testid="stImage"] img { pointer-events:none; }
@@ -327,6 +332,7 @@ def run_with_status(label: str, task):
 
 def go_home() -> None:
     st.session_state.item_id = None
+    st.session_state.shown_item = None          # 같은 법률에 다시 들어와도 맨 위부터
     st.session_state.panel = None
 
 
@@ -476,8 +482,11 @@ def greeting_mascot() -> str:
 
 
 if not item:
-    st.session_state.setdefault("panel", None)
-    st.markdown("""
+    # 첫 화면 전체를 컨테이너 하나로 — 법률 화면으로 넘어가면 이 자리를 바로 덮어써서
+    # 답변을 기다리는 동안 검색 결과 카드가 흐리게 남지 않는다 (Streamlit 은 다시 그리지 않은 요소를 실행이 끝날 때까지 남긴다)
+    with st.container(key="landing"):
+        st.session_state.setdefault("panel", None)
+        st.markdown("""
 <style>
 [data-testid="stSidebar"], [data-testid="stSidebarCollapsedControl"] { display:none; }
 .block-container { max-width: 760px; padding-bottom: 170px; }
@@ -535,87 +544,94 @@ if not item:
 }
 </style>""", unsafe_allow_html=True)
 
-    st.markdown(f"<div class='landing-brand'>{greeting_mascot()}"
-                f"<div class='name'>{SERVICE_NAME}</div><div class='slogan'>{SLOGAN}</div>"
-                f"<div class='hint'>있었던 일을 그대로 들려주세요. 어려운 법 이야기는 로우가 대신 읽고 알려 드릴게요.</div></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='landing-brand'>{greeting_mascot()}"
+                    f"<div class='name'>{SERVICE_NAME}</div><div class='slogan'>{SLOGAN}</div>"
+                    f"<div class='hint'>있었던 일을 그대로 들려주세요. 어려운 법 이야기는 로우가 대신 읽고 알려 드릴게요.</div></div>", unsafe_allow_html=True)
 
-    # 가운데 검색창 — 법률 이름이면 그 법률을, 아니면 상황으로 보고 맞는 법을 찾는다
-    with st.container(key="main_search"):
-        with st.form("main_search_form", border=False):
-            box, go = st.columns([5, 1], vertical_alignment="bottom")
-            query = box.text_input("검색", placeholder="궁금한 상황이나 법률 이름  예) 알바하다가 다쳤어요",
-                                   label_visibility="collapsed")
-            searched = go.form_submit_button("검색", type="primary", width="stretch")
+        # 가운데 검색창 — 법률 이름이면 그 법률을, 아니면 상황으로 보고 맞는 법을 찾는다
+        with st.container(key="main_search"):
+            with st.form("main_search_form", border=False):
+                box, go = st.columns([5, 1], vertical_alignment="bottom")
+                query = box.text_input("검색", placeholder="궁금한 상황이나 법률 이름  예) 알바하다가 다쳤어요",
+                                       label_visibility="collapsed")
+                searched = go.form_submit_button("검색", type="primary", width="stretch")
 
-    # 작은 버튼 3개 — 눌러야 해당 패널이 열린다
-    # 글자 크기만큼만 차지하는 작은 버튼을 가운데로 모은다
-    with st.container(key="small_buttons", horizontal=True, horizontal_alignment="center"):
+        # 작은 버튼 3개 — 눌러야 해당 패널이 열린다
+        # 글자 크기만큼만 차지하는 작은 버튼을 가운데로 모은다
+        with st.container(key="small_buttons", horizontal=True, horizontal_alignment="center"):
+            panel = st.session_state.panel
+            for name, label in (("laws", "📚 법률 고르기"), ("popular", "⭐ 자주 찾는 법"), ("situation", "🔎 상황으로 법 찾기")):
+                st.button(label, key=f"panel_{name}", width="content", on_click=toggle_panel, args=(name,),
+                          type="primary" if panel == name else "secondary")
+
+        if searched and query.strip():
+            q = query.strip()
+            named = [i for i in items if q.replace(" ", "") in i["label"].replace(" ", "")
+                     or (i.get("abbr") and q.replace(" ", "") in i["abbr"])]
+            st.session_state.panel = None
+            if named:
+                st.session_state.search_result = (q, [{"item": i, "reason": ""} for i in named[:6]], "name")
+            else:
+                with st.spinner("로우가 상황에 맞는 법을 찾는 중…"):
+                    try:
+                        st.session_state.search_result = (q, find_laws(rt, q, items_by_id), "situation")
+                    except Exception as error:
+                        log.exception("find_laws")
+                        st.error(friendly_error(error))
+
         panel = st.session_state.panel
-        for name, label in (("laws", "📚 법률 고르기"), ("popular", "⭐ 자주 찾는 법"), ("situation", "🔎 상황으로 법 찾기")):
-            st.button(label, key=f"panel_{name}", width="content", on_click=toggle_panel, args=(name,),
-                      type="primary" if panel == name else "secondary")
+        if panel == "laws":
+            with st.container(border=True):
+                st.markdown("**📚 법률 고르기**")
+                cat = st.pills("분야", categories, key="landing_category", label_visibility="collapsed")
+                words = st.text_input("법률 이름", key="landing_law_search", placeholder="🔍 법률 이름으로 찾기",
+                                      label_visibility="collapsed").strip()
+                options = [i["item_id"] for i in items
+                           if cat in (None, i["category"]) and (not words or words in i["label"])]
+                with st.container(height=300, border=False):
+                    if options:
+                        st.radio("법률", options, key="item_id", index=None, label_visibility="collapsed",
+                                 format_func=lambda i: items_by_id[i]["label"])
+                    else:
+                        st.caption("찾는 법률이 없어요.")
+        elif panel == "popular":
+            with st.container(border=True):
+                st.markdown("**⭐ 자주 찾는 법**")
+                render_law_cards([{"item": items_by_label[n], "reason": items_by_label[n]["category"] + " · "
+                                   + items_by_label[n]["purpose"].split(")", 1)[-1].strip()[:60] + "…"}
+                                  for n in POPULAR_LAWS])
+        elif panel == "situation":
+            with st.container(border=True):
+                render_find_laws()
+        elif st.session_state.get("search_result"):
+            q, results, kind = st.session_state.search_result
+            st.caption(f"‘{q}’ " + ("— 이름이 맞는 법률" if kind == "name" else "— 상황에 맞는 법"))
+            if results:
+                render_law_cards(results, question=q if kind == "situation" else None)
+            else:
+                note("thinking", "꼭 맞는 법을 찾지 못했어요. 상황을 조금 더 구체적으로 적어 주세요.", 72)
 
-    if searched and query.strip():
-        q = query.strip()
-        named = [i for i in items if q.replace(" ", "") in i["label"].replace(" ", "")
-                 or (i.get("abbr") and q.replace(" ", "") in i["abbr"])]
-        st.session_state.panel = None
-        if named:
-            st.session_state.search_result = (q, [{"item": i, "reason": ""} for i in named[:6]], "name")
-        else:
-            with st.spinner("로우가 상황에 맞는 법을 찾는 중…"):
-                try:
-                    st.session_state.search_result = (q, find_laws(rt, q, items_by_id), "situation")
-                except Exception as error:
-                    log.exception("find_laws")
-                    st.error(friendly_error(error))
+        # 처음엔 로우 ~ 작은 버튼 덩어리(약 470px)를 세로 가운데에, 패널 · 결과가 열리면 위로 올린다
+        active = bool(st.session_state.panel or st.session_state.get("search_result"))
+        top = "1.5rem" if active else "max(1.5rem, calc((100vh - 150px - 470px) / 2))"
+        # 첫 화면을 처음 그릴 때는 애니메이션 없이 바로 가운데에 — 이후 버튼으로 오르내릴 때만 부드럽게 움직인다
+        motion = "transition: padding-top .45s cubic-bezier(.2, .8, .2, 1);" if st.session_state.get("landing_drawn") else ""
+        st.session_state.landing_drawn = True
+        st.markdown(f"<style>.block-container {{ padding-top: {top}; {motion} }}</style>", unsafe_allow_html=True)
 
-    panel = st.session_state.panel
-    if panel == "laws":
-        with st.container(border=True):
-            st.markdown("**📚 법률 고르기**")
-            cat = st.pills("분야", categories, key="landing_category", label_visibility="collapsed")
-            words = st.text_input("법률 이름", key="landing_law_search", placeholder="🔍 법률 이름으로 찾기",
-                                  label_visibility="collapsed").strip()
-            options = [i["item_id"] for i in items
-                       if cat in (None, i["category"]) and (not words or words in i["label"])]
-            with st.container(height=300, border=False):
-                if options:
-                    st.radio("법률", options, key="item_id", index=None, label_visibility="collapsed",
-                             format_func=lambda i: items_by_id[i]["label"])
-                else:
-                    st.caption("찾는 법률이 없어요.")
-    elif panel == "popular":
-        with st.container(border=True):
-            st.markdown("**⭐ 자주 찾는 법**")
-            render_law_cards([{"item": items_by_label[n], "reason": items_by_label[n]["category"] + " · "
-                               + items_by_label[n]["purpose"].split(")", 1)[-1].strip()[:60] + "…"}
-                              for n in POPULAR_LAWS])
-    elif panel == "situation":
-        with st.container(border=True):
-            render_find_laws()
-    elif st.session_state.get("search_result"):
-        q, results, kind = st.session_state.search_result
-        st.caption(f"‘{q}’ " + ("— 이름이 맞는 법률" if kind == "name" else "— 상황에 맞는 법"))
-        if results:
-            render_law_cards(results, question=q if kind == "situation" else None)
-        else:
-            note("thinking", "꼭 맞는 법을 찾지 못했어요. 상황을 조금 더 구체적으로 적어 주세요.", 72)
-
-    # 처음엔 로우 ~ 작은 버튼 덩어리(약 470px)를 세로 가운데에, 패널 · 결과가 열리면 위로 올린다
-    active = bool(st.session_state.panel or st.session_state.get("search_result"))
-    top = "1.5rem" if active else "max(1.5rem, calc((100vh - 150px - 470px) / 2))"
-    # 첫 화면을 처음 그릴 때는 애니메이션 없이 바로 가운데에 — 이후 버튼으로 오르내릴 때만 부드럽게 움직인다
-    motion = "transition: padding-top .45s cubic-bezier(.2, .8, .2, 1);" if st.session_state.get("landing_drawn") else ""
-    st.session_state.landing_drawn = True
-    st.markdown(f"<style>.block-container {{ padding-top: {top}; {motion} }}</style>", unsafe_allow_html=True)
-
-    st.markdown(f"<div class='landing-footer'><div class='footer-brand'>{mascot_img('scale', 40)}<span class='footer-logo'>{SERVICE_NAME}</span></div><div>{esc(LEGAL)}</div>"
-                f"<div class='sources'>출처: 국가법령정보센터 Open API · 한국어 위키백과(CC BY-SA 4.0) · "
-                f"법제처 「2024 법령해석 사례집」(공공누리 제4유형)</div></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='landing-footer'><div class='footer-brand'>{mascot_img('scale', 40)}<span class='footer-logo'>{SERVICE_NAME}</span></div><div>{esc(LEGAL)}</div>"
+                    f"<div class='sources'>출처: 국가법령정보센터 Open API · 한국어 위키백과(CC BY-SA 4.0) · "
+                    f"법제처 「2024 법령해석 사례집」(공공누리 제4유형)</div></div>", unsafe_allow_html=True)
     st.stop()
 
 # ── 법률을 고른 뒤: 사건 기록부 + 탭 ───────────────────────────────────────────────
+
+# 법률 화면에 처음 들어오면 맨 위로 — 첫 화면에서 검색 결과를 보려고 내린 스크롤이 그대로 남아 윗부분이 잘려 보인다
+if st.session_state.get("shown_item") != item["item_id"]:
+    st.session_state.shown_item = item["item_id"]
+    with st.container(key="scroll_top"):
+        components.html("<script>const m = window.parent.document.querySelector('[data-testid=\"stMain\"]');"
+                        "if (m) m.scrollTo({top: 0});</script>", height=0)
 
 date = item["effective_date"]
 st.markdown(f"""
@@ -635,7 +651,12 @@ tab_chat, tab_fact, tab_explain, tab_find = st.tabs(["💬 물어보기", "⚖�
 with tab_chat:
     history = st.session_state.histories.setdefault(item["item_id"], [])
     pending_question = None
-    if not history:
+    # 상황 검색 → "이 법으로 물어보기" 로 들어왔으면 그때 적은 문장을 바로 물어본다 (한 번만)
+    auto = st.session_state.get("auto_question")
+    if auto and auto[0] == item["item_id"]:
+        st.session_state.auto_question = None
+        pending_question = auto[1]
+    if not history and not pending_question:      # 바로 물어볼 질문이 있으면 예시 질문 상자는 건너뛴다
         with st.container(border=True):
             note("walking", f"<b>{esc(item['label'])}</b>에 대해 무엇이든 물어보세요.<br>"
                             "<span class='small-note'>이렇게 물어봐도 좋아요</span>", cls="bob")
@@ -652,11 +673,6 @@ with tab_chat:
             else:
                 st.markdown(message["content"])
 
-    # 상황 검색 → "이 법으로 물어보기" 로 들어왔으면 그때 적은 문장을 바로 물어본다 (한 번만)
-    auto = st.session_state.get("auto_question")
-    if auto and auto[0] == item["item_id"]:
-        st.session_state.auto_question = None
-        pending_question = pending_question or auto[1]
     question = st.chat_input(f"{item['label']}에 대해 물어보세요", key="chat_input") or pending_question
     if question:
         history.append({"role": "user", "content": question})
