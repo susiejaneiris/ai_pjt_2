@@ -90,7 +90,8 @@ st.markdown("""
 <style>
 :root { --navy:#1f2a44; --navy-2:#2b3a5c; --gold:#c9a44c; --gold-soft:#f3e3b5; --gold-ink:#8c6a1f;
         --paper:#fffdf8; --paper-2:#f6f0e4; --line:#e6dccb; --muted:#7a7468; --red:#b3412e; --green:#2f6b4f; }
-.block-container { padding-top: 1.2rem; }
+/* 위 여백은 Streamlit 상단 막대(실행 표시 · Stop · 배포 사이트의 Fork · GitHub, 높이 3.75rem)보다 크게 — 작으면 판넬 윗부분이 막대 밑에 깔린다 */
+.block-container { padding-top: 4.5rem; }
 
 /* 법정 판넬 */
 .bench { display:flex; align-items:center; gap:12px; padding:12px 18px; margin-bottom:18px; border-radius:16px;
@@ -666,7 +667,7 @@ if not item:
 
         # 처음엔 로우 ~ 작은 버튼 덩어리(약 470px)를 세로 가운데에, 패널 · 결과가 열리면 위로 올린다
         active = bool(st.session_state.panel or st.session_state.get("search_result"))
-        top = "1.5rem" if active else "max(1.5rem, calc((100vh - 150px - 470px) / 2))"
+        top = "4.5rem" if active else "max(4.5rem, calc((100vh - 150px - 470px) / 2))"      # 4.5rem — 상단 막대 아래부터
         # 첫 화면을 처음 그릴 때는 애니메이션 없이 바로 가운데에 — 이후 버튼으로 오르내릴 때만 부드럽게 움직인다
         motion = "transition: padding-top .45s cubic-bezier(.2, .8, .2, 1);" if st.session_state.get("landing_drawn") else ""
         st.session_state.landing_drawn = True
