@@ -16,7 +16,8 @@ def get_chat_model() -> ChatOpenAI:
     settings = load_settings()
     # 온도를 낮춰 같은 근거 · 같은 질문에 같은 답이 나오게 한다 — 평가에서 실행마다 인용 · 거절이 흔들렸다
     return ChatOpenAI(model=settings["chat_model"], api_key=key, base_url=GMS_BASE_URL,
-                      temperature=settings.get("temperature", 0))
+                      temperature=settings.get("temperature", 0),
+                      max_retries=4)      # GMS 429(짧은 시간 요청 몰림) — 점점 길게 기다리며 다시 시도 (기본 2회는 금방 포기)
 
 
 def parse_json(text: str, default):

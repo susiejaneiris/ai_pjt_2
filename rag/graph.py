@@ -16,7 +16,7 @@ from prep.disclaimer import notices_for, prompt_rules
 from rag.citations import citation_warnings, cited_numbers
 from rag.prompts import (ANSWER_PROMPT, CITE_RETRY, EXPLAIN_PROMPT, FACTCHECK_PROMPT, NO_EVIDENCE_GUIDE, NOT_FOUND,
                          OUT_OF_SCOPE_GUIDE)
-from rag.retriever import format_sources, retrieve_sources
+from rag.retriever import format_sources, rerank_sources, retrieve_sources
 
 MODE_PROMPTS = {"qa": ANSWER_PROMPT, "factcheck": FACTCHECK_PROMPT, "explain": EXPLAIN_PROMPT}
 
@@ -28,6 +28,7 @@ class RagState(TypedDict, total=False):
     mode: str                    # "qa" | "factcheck" | "explain"
     settings: dict
     pinned_ids: list[str]        # 검색과 무관하게 꼭 넣을 청크 (조문 풀이)
+    pinned_docs: list[str]       # 검색과 무관하게 꼭 넣을 문서 id (프롬프트 1 이 지목한 조문)
     queries: list[str]           # 프롬프트 1 이 만든 법률 용어 검색어 — 검색 질의를 보강
     in_scope: bool               # 프롬프트 1 의 범위 판단 — False 면 generate 가 LLM 없이 안내만
     sources: list[dict]
@@ -45,8 +46,16 @@ def build_graph(meta_store, docs_store, llm):
         # 일상어 질문만으로는 조문과 의미가 멀어 핵심 조문을 놓친다 → 법률 용어 검색어도 각각 검색해 합친다.
         last_user = [m["content"] for m in state.get("history", []) if m["role"] == "user"][-1:]
         queries = [" ".join(last_user + [state["question"]])] + state.get("queries", [])
-        return {"sources": retrieve_sources(meta_store, docs_store, state["item"], queries, settings,
-                                            state.get("pinned_ids"))}
+        if not settings.get("rerank") or state.get("mode") == "explain":
+            return {"sources": retrieve_sources(meta_store, docs_store, state["item"], queries, settings,
+                                                state.get("pinned_ids"), state.get("pinned_docs"))}
+        # 재순위화 — 후보를 넓게 가져와 LLM 이 질문에 맞는 순서로 다시 고른다
+        wide = {**settings, "top_k": settings.get("rerank_fetch_k", 20)}
+        sources = retrieve_sources(meta_store, docs_store, state["item"], queries, wide,
+                                   state.get("pinned_ids"), state.get("pinned_docs"))
+        keep = settings.get("rerank_keep", 7)
+        return {"sources": rerank_sources(llm, state["item"], state["question"], sources, keep,
+                                          state.get("pinned_docs") or [])}
 
     def generate(state: RagState) -> dict:
         item, sources = state["item"], state["sources"]

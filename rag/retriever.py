@@ -8,6 +8,7 @@
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
 
+from rag.lexical import LexicalIndex
 from store.vectorstore import get_by_id
 
 SOURCE_LABELS = {"meta": "항목 메타데이터", "article": "조문", "prec": "판례",
@@ -50,20 +51,39 @@ def search_docs(docs_store: Chroma, queries: str | list[str], item_id: str, sett
         queries = [queries]
     queries = [q for q in queries if q and q.strip()]
     k = settings["top_k"]
-    if not settings.get("multi_query", True) or len(queries) == 1:
+    hybrid = settings.get("hybrid", False)
+    multi = settings.get("multi_query", True)
+    if not hybrid and (not multi or len(queries) == 1):
         return search_one(docs_store, " ".join(queries), item_id, settings, k)
 
     # 질의마다 top_k 보다 깊게(rrf_depth) 본다 — 상위 6개만 합산하면 여러 질의에서 꾸준히 10~20위인 정답이
     # 표를 못 받는다 (평가 v5: 한 검색어로 1위인 정답 조문이 다른 질의의 표에 밀려 탈락)
     depth = max(k, settings.get("rrf_depth", 30))
+    rankings = [(1.0, search_one(docs_store, q, item_id, settings, depth))
+                for q in (queries if multi else [" ".join(queries)])]
+    if hybrid:
+        # 하이브리드 — 같은 질의들로 키워드(글자 조각) 순위도 내서 함께 합친다 (rag/lexical.py)
+        weight = settings.get("hybrid_weight", 1.0)
+        rankings += [(weight, ranked) for ranked in lexical_rankings(docs_store, queries, item_id, depth)]
+
     scores: dict[str, float] = {}
     docs: dict[str, Document] = {}
-    for query in queries:
-        for rank, doc in enumerate(search_one(docs_store, query, item_id, settings, depth), start=1):
-            scores[doc.id] = scores.get(doc.id, 0.0) + 1.0 / (RRF_K + rank)
+    for weight, ranked in rankings:
+        for rank, doc in enumerate(ranked, start=1):
+            scores[doc.id] = scores.get(doc.id, 0.0) + weight / (RRF_K + rank)
             docs.setdefault(doc.id, doc)
     ranked = sorted(scores, key=scores.get, reverse=True)
     return [docs[i] for i in ranked[:k]]
+
+
+def lexical_rankings(docs_store: Chroma, queries: list[str], item_id: str, depth: int) -> list[list[Document]]:
+    """이 법률의 청크 전체에서 질의마다 키워드 순위 (임베딩 호출 없음). 청크가 없으면 빈 목록."""
+    got = docs_store.get(where={"item_id": item_id}, include=["documents", "metadatas"])
+    if not got["ids"]:
+        return []
+    chunks = [Document(page_content=t, metadata=m, id=i) for i, t, m in zip(got["ids"], got["documents"], got["metadatas"])]
+    index = LexicalIndex([d.page_content for d in chunks], [d.metadata.get("title", "") for d in chunks])
+    return [[chunks[n] for n in index.ranking(q, depth)] for q in queries]
 
 
 def expand_articles(docs_store: Chroma, found: list[Document]) -> list[Document]:
@@ -154,17 +174,54 @@ def to_sources(docs: list[Document]) -> list[dict]:
     return sources
 
 
+def doc_chunks(docs_store: Chroma, item_id: str, doc_id: str) -> list[Document]:
+    """한 문서(조문 하나)의 청크 전부를 순번대로."""
+    got = docs_store.get(where={"$and": [{"item_id": item_id}, {"doc_id": doc_id}]}, include=["documents", "metadatas"])
+    chunks = [Document(page_content=t, metadata=m, id=i) for i, t, m in zip(got["ids"], got["documents"], got["metadatas"])]
+    return sorted(chunks, key=lambda d: int(d.id.rsplit(":", 1)[-1]) if d.id.rsplit(":", 1)[-1].isdigit() else 0)
+
+
 def retrieve_sources(meta_store: Chroma, docs_store: Chroma, item: dict, query: str | list[str], settings: dict,
-                     pinned_ids: list[str] | None = None) -> list[dict]:
-    """pinned_ids — 검색과 무관하게 꼭 넣을 청크 (조문 풀이에서 고른 조문)."""
+                     pinned_ids: list[str] | None = None, pinned_docs: list[str] | None = None) -> list[dict]:
+    """pinned_ids — 검색과 무관하게 꼭 넣을 청크 (조문 풀이에서 고른 조문).
+    pinned_docs — 검색과 무관하게 꼭 넣을 문서 id (프롬프트 1 이 조문 목록에서 지목한 조문, 청크 전부)."""
     meta = get_by_id(meta_store, item["item_id"])
     if meta:
         meta.metadata["title"] = f"{item['label']} — 법률 개요"
     pinned = [d for d in (get_by_id(docs_store, i) for i in pinned_ids or []) if d]
+    for doc_id in pinned_docs or []:
+        pinned += doc_chunks(docs_store, item["item_id"], doc_id)
     found = search_docs(docs_store, query, item["item_id"], settings)
     if settings.get("expand_articles", True):
         found = expand_articles(docs_store, found)
     return to_sources(merge(meta, pinned + found))
+
+
+def rerank_sources(llm, item: dict, question: str, sources: list[dict], keep: int,
+                   pinned_docs: list[str]) -> list[dict]:
+    """재순위화 — 넓게 가져온 근거를 LLM 이 질문에 맞는 순서로 다시 골라 keep 개만 남긴다.
+
+    메타(법률 개요)와 프롬프트 1 이 지목한 조문은 항상 남긴다. LLM 답을 못 읽으면 원래 순서 그대로.
+    벡터 · 키워드 순위는 "비슷한 말"을 앞에 세울 뿐이라, 정답 조문을 찾아 놓고도 뒤로 밀려
+    답변이 인용하지 않는 일이 있었다 (평가 W10 약사법 제44조).
+    """
+    from rag.llm import parse_json                       # 순환 import 를 피해 여기서
+    from rag.prompts import RERANK_PROMPT
+
+    fixed = [s for s in sources if s["type"] == "meta"
+             or any(f":{doc_id}:" in s.get("chunk_id", "") for doc_id in pinned_docs)]
+    rest = [s for s in sources if s not in fixed]
+    if len(rest) <= keep:
+        return sources
+    listing = "\n".join(f"{n}. ({s['type_label']}) {s['title']} — {s['text'].split(chr(10), 1)[-1][:160]}"
+                        for n, s in enumerate(rest, start=1))
+    prompt = RERANK_PROMPT.format(keep=keep, item_name=item["label"], question=question, candidates=listing)
+    order = parse_json(llm.invoke(prompt).content, default={})
+    numbers = [n for n in (order.get("order", []) if isinstance(order, dict) else [])
+               if isinstance(n, int) and 1 <= n <= len(rest)]
+    chosen = [rest[n - 1] for n in dict.fromkeys(numbers)][:keep] or rest[:keep]
+    ordered = sorted(fixed + chosen, key=lambda s: SOURCE_ORDER.get(s["type"], 9))   # 출처 순서는 그대로 지킨다
+    return [{**s, "n": n} for n, s in enumerate(ordered, start=1)]
 
 
 def format_sources(sources: list[dict]) -> str:

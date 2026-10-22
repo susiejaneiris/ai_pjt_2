@@ -9,15 +9,13 @@ GMS 키 하나로 답변 모델과 임베딩을 같이 쓰므로, 한도가 끝�
 """
 
 import logging
-import math
-import re
 import time
-from collections import Counter
 
 from openai import APIStatusError, RateLimitError
 
 from prep.collect import article_doc, get_law_articles
 from prep.disclaimer import notices_for
+from rag.lexical import LexicalIndex
 from rag.retriever import SOURCE_LABELS
 from service.chat import Result, ask
 from service.runtime import Runtime
@@ -68,35 +66,20 @@ def law_api_documents(item: dict) -> list[dict]:
         return []
 
 
-def word_grams(text: str) -> set[str]:
-    """낱말 안에서만 두 글자씩 — 띄어쓰기를 지우고 자르면 "는데 · 받아 · 아요" 같은 조각이 아무 문서에나 걸린다."""
-    grams = set()
-    for word in re.findall(r"[가-힣A-Za-z0-9]{2,}", text):
-        grams |= {word[i:i + 2] for i in range(len(word) - 1)}
-    return grams
-
-
 def offline_sources(rt: Runtime, item: dict, question: str, limit: int = 5) -> list[dict]:
-    """질문과 겹치는 글자 조각이 많은 원문 순으로 — 여러 문서에 흔한 조각일수록 낮게 친다(IDF).
-    같은 문서의 청크는 하나만. 일상어와 법률 용어가 다르면("월급" ↔ "임금") 못 찾는 한계가 있다."""
+    """질문과 겹치는 글자 조각이 많은 원문 순으로 — 여러 문서에 흔한 조각일수록 낮게 친다(IDF, rag/lexical.py).
+    출처 신뢰 순서로 한 번 더 무게를 준다. 같은 문서의 청크는 하나만.
+    일상어와 법률 용어가 다르면("월급" ↔ "임금") 못 찾는 한계가 있다."""
     docs = stored_documents(rt, item) or law_api_documents(item)
-    query = word_grams(question)
-    doc_grams = [word_grams(d.get("title", "") + " " + d["text"]) for d in docs]
-    df = Counter(g for grams in doc_grams for g in grams & query)
-    idf = {g: math.log((len(docs) + 1) / (n + 0.5)) for g, n in df.items()}
-
-    title_grams = [word_grams(d.get("title", "")) for d in docs]
-
-    def score(n: int) -> float:
-        body = sum(idf[g] for g in doc_grams[n] & query) / math.log(len(doc_grams[n]) + 10)
-        title = sum(idf[g] for g in title_grams[n] & query)              # 조문 제목에 맞으면 더 친다
-        return (body + 0.3 * title) * TYPE_WEIGHT.get(docs[n].get("source_type", ""), 0.5)
+    index = LexicalIndex([d.get("title", "") + " " + d["text"] for d in docs], [d.get("title", "") for d in docs])
+    base = index.scores(question)
+    scores = [s * TYPE_WEIGHT.get(d.get("source_type", ""), 0.5) for s, d in zip(base, docs)]
 
     picked, seen = [], set()
-    for n in sorted(range(len(docs)), key=score, reverse=True):
+    for n in sorted(range(len(docs)), key=scores.__getitem__, reverse=True):
         doc = docs[n]
         key = doc.get("doc_id") or doc["chunk_id"]
-        if key in seen or score(n) <= 0:
+        if key in seen or scores[n] <= 0:
             continue
         seen.add(key)
         picked.append(doc)

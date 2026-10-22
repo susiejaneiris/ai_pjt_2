@@ -25,7 +25,8 @@ def get_embeddings() -> Embeddings:
     if not key:
         raise MissingKeyError("GMS_KEY가 없습니다. .env 를 확인하세요.")
     return OpenAIEmbeddings(
-        model=load_settings()["embedding_model"], api_key=key, base_url=GMS_BASE_URL
+        model=load_settings()["embedding_model"], api_key=key, base_url=GMS_BASE_URL,
+        max_retries=4,                    # GMS 429 대비 (rag/llm.py 와 같게)
     )
 
 

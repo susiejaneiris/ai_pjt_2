@@ -48,11 +48,13 @@ def prepare_documents(rt: Runtime, item: dict, question: str, on_step=lambda m: 
 
 
 def run_graph(rt: Runtime, item: dict, question: str, history: list[dict], mode: str = "qa",
-              pinned_ids: list[str] | None = None, queries: list[str] | None = None, in_scope: bool = True) -> Result:
+              pinned_ids: list[str] | None = None, queries: list[str] | None = None, in_scope: bool = True,
+              pinned_docs: list[str] | None = None) -> Result:
     state = rt.graph.invoke({
         "item": item, "question": question, "mode": mode, "settings": rt.settings,
         "history": [{"role": m["role"], "content": m["content"]} for m in history],
         "pinned_ids": pinned_ids or [], "queries": queries or [], "in_scope": in_scope,
+        "pinned_docs": pinned_docs or [],
     })
     answer = state["answer"]
     return Result(
@@ -66,7 +68,8 @@ def ask(rt: Runtime, item: dict, question: str, history: list[dict], mode: str =
     started = time.perf_counter()
     report = prepare_documents(rt, item, question, on_step)
     on_step("근거를 찾아 답변을 쓰는 중")
-    result = run_graph(rt, item, question, history, mode, queries=report.queries, in_scope=report.in_scope)
+    result = run_graph(rt, item, question, history, mode, queries=report.queries, in_scope=report.in_scope,
+                       pinned_docs=report.article_docs)       # 프롬프트 1 이 조문 목록에서 지목한 조문
     result.report = report
     result.elapsed = time.perf_counter() - started
     return result

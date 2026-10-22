@@ -11,6 +11,7 @@
 """
 
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import date
 from functools import lru_cache
@@ -20,7 +21,7 @@ import requests
 from config import COLLECTED_JSON, FALLBACK_DIR
 from prep import casebook, easylaw_qa, kids_guide, law_api, wiki_api
 from rag.llm import parse_json
-from rag.prompts import QUERY_PROMPT, SELECT_PROMPT
+from rag.prompts import ARTICLE_PICK_PROMPT, QUERY_PROMPT, SELECT_PROMPT
 
 BASE_ARTICLES = ("제1조", "제2조")       # 목적 · 정의 — 부분 항목(민법)에서도 항상 넣는 조문
 # 항목 자체 문서의 구성이 바뀌면 올린다 → 이미 수집한 항목도 새 구성으로 다시 수집
@@ -154,15 +155,64 @@ def base_documents(item: dict) -> list[dict]:
 
 # ── 프롬프트 1 · 2 ────────────────────────────────────────────────────────────────
 
-def extract_queries(item: dict, question: str, llm) -> tuple[list[str], bool]:
-    """프롬프트 1 — (검색어, 범위 안인지). 파싱에 실패하면 질문 자체로 검색하고 범위 안으로 본다."""
-    prompt = QUERY_PROMPT.format(item_name=item["label"], item_purpose=item.get("purpose", ""), question=question)
+ARTICLE_LABEL = re.compile(r"제\d+조(?:의\d+)?")
+MAX_MENU_ARTICLES = 600       # 상법처럼 조문이 아주 많은 법은 앞쪽만 (프롬프트 길이)
+
+
+def article_menu(item: dict) -> dict[str, str]:
+    """조문 지목에 보여 줄 이 법률의 조문 — {"제3조": "제3조(대항력 등)"}. 시행령은 넣지 않는다.
+    법령 API 가 막힌 환경이면 빈 목록 (조문 지목 없이 검색만)."""
+    try:
+        articles = [a for a in get_law_articles(item) if a["source"] == item["name"]]
+    except EXTERNAL_ERRORS:
+        return {}
+    return {a["article"]: f"{a['article']}({a['title']})" if a["title"] else a["article"]
+            for a in articles[:MAX_MENU_ARTICLES]}
+
+
+def picked_articles(parsed: dict, menu: dict[str, str]) -> list[str]:
+    """LLM 이 고른 조문 번호 중 목록에 있는 것만 (지어낸 번호는 버린다)."""
+    labels = parsed.get("articles", []) if isinstance(parsed, dict) else []
+    picked = []
+    for label in labels:
+        # 목록 그대로 "제44조(의약품 판매)" 처럼 제목까지 붙여 답한다 → 조문 번호만 뽑아 맞춘다
+        found = ARTICLE_LABEL.search(label.replace(" ", "")) if isinstance(label, str) else None
+        if found and found.group(0) in menu and found.group(0) not in picked:
+            picked.append(found.group(0))
+    return picked[:3]
+
+
+def extract_queries(item: dict, question: str, llm) -> tuple[list[str], bool, list[str]]:
+    """프롬프트 1 — (검색어, 범위 안인지, 지목한 조문 번호). 파싱에 실패하면 질문 자체로 검색하고 범위 안으로 본다."""
+    menu = article_menu(item)
+    prompt = QUERY_PROMPT.format(item_name=item["label"], item_purpose=item.get("purpose", ""), question=question,
+                                 article_list="\n".join(menu.values()) or "(목록 없음)")
     parsed = parse_json(llm.invoke(prompt).content, default={})
     if isinstance(parsed, list):                      # 예전 형식(배열만)으로 답해도 받아 준다
         parsed = {"queries": parsed}
     queries = [q.strip() for q in parsed.get("queries", []) if isinstance(q, str) and q.strip()]
     in_scope = parsed.get("in_scope", True) is not False
-    return queries[:4] or [question], in_scope
+    return queries[:4] or [question], in_scope, picked_articles(parsed, menu) if in_scope else []
+
+
+def pick_articles(item: dict, question: str, llm) -> list[str]:
+    """조문 지목만 — 조문 지목을 넣기 전에 캐시된 질문용 (검색어는 캐시 그대로 둔다)."""
+    menu = article_menu(item)
+    if not menu:
+        return []
+    prompt = ARTICLE_PICK_PROMPT.format(item_name=item["label"], article_list="\n".join(menu.values()),
+                                        question=question)
+    return picked_articles(parse_json(llm.invoke(prompt).content, default={}), menu)
+
+
+def article_doc_ids(item: dict, labels: list[str]) -> list[str]:
+    """조문 번호 → law_docs 의 문서 id (article-{mst}-{조문}). 법률 조문은 항목 자체 문서로 이미 색인돼 있다."""
+    try:
+        by_label = {a["article"]: f"article-{a['mst']}-{a['article']}"
+                    for a in get_law_articles(item) if a["source"] == item["name"]}
+    except EXTERNAL_ERRORS:
+        return []
+    return [by_label[l] for l in labels if l in by_label]
 
 
 def gather_candidates(item: dict, queries: list[str], settings: dict, skip_doc_ids: set[str]) -> dict:
@@ -267,6 +317,8 @@ class CollectReport:
     reused_docs: int = 0                                  # 이미 색인돼 있어 다시 수집하지 않은 문서 수
     fallback: bool = False                                # 외부 호출이 막혀 저장된 문서 묶음을 썼는지
     in_scope: bool = True                                 # 프롬프트 1 이 본 질문 범위 — False 면 수집 · 생성을 건너뛴다
+    articles: list[str] = field(default_factory=list)     # 프롬프트 1 이 지목한 조문 번호 (예: ["제3조"])
+    article_docs: list[str] = field(default_factory=list) # 그 조문의 문서 id — 근거에 고정한다
 
 
 EXTERNAL_ERRORS = (requests.RequestException, RuntimeError)     # 네트워크 · 한도 초과 · 인증 실패
@@ -324,9 +376,14 @@ def collect(item: dict, question: str, settings: dict, llm, on_step=lambda messa
     if isinstance(cached, dict):                      # 범위 판단까지 저장된 질문 — 같은 질문은 늘 같은 결과
         on_step("전에 받은 질문이라 모아 둔 문서를 다시 써요")
         report.queries, report.in_scope = cached["queries"], cached["in_scope"]
+        report.articles = cached.get("articles", [])
+        if "articles" not in cached and report.in_scope and settings.get("pin_articles", True):
+            # 조문 지목을 넣기 전에 캐시된 질문 — 검색어는 그대로 두고 조문만 한 번 골라 저장한다
+            report.articles = pick_articles(item, question, llm)
+            cached["articles"] = report.articles
     else:                                             # 처음 받은 질문 (또는 범위 판단 없이 저장된 예전 기록)
         on_step("질문을 살펴보고 검색어를 정리하는 중")
-        report.queries, report.in_scope = extract_queries(item, question, llm)
+        report.queries, report.in_scope, report.articles = extract_queries(item, question, llm)
     if not report.in_scope:
         # 고른 법률이 다루지 않는 질문 — 외부 문서를 모으지 않는다 (엉뚱한 문서가 이 법률 칸에 쌓이는 것도 막는다)
         on_step("이 법률이 다루는 질문이 아니라 문서를 모으지 않아요")
@@ -349,7 +406,7 @@ def collect(item: dict, question: str, settings: dict, llm, on_step=lambda messa
             # 이번 검색어들로 수집을 마쳤다고 기록한다. 다음에 같은 검색어가 나오면 건너뛴다 (NF2002).
             for q in report.new_queries:
                 entry["queries"][q] = [d["doc_id"] for d in docs]
-        asked[question_key(question)] = {"queries": report.queries, "in_scope": True}
+        asked[question_key(question)] = {"queries": report.queries, "in_scope": True, "articles": report.articles}
     except EXTERNAL_ERRORS:
         # 외부 호출이 막힌 환경 — 미리 받아 둔 문서 묶음으로 수집을 대신한다 (명세 F2004).
         # 검색어는 '수집함'으로 기록하지 않는다 → 연결이 돌아오면 다시 수집한다.
@@ -359,6 +416,8 @@ def collect(item: dict, question: str, settings: dict, llm, on_step=lambda messa
         report.raw_docs += bundle
         report.fallback = True
 
+    if settings.get("pin_articles", True):
+        report.article_docs = article_doc_ids(item, report.articles)
     report.selected = list(dict.fromkeys(d["title"] for d in report.raw_docs))
     save_cache(cache)
     return report
