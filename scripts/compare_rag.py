@@ -48,7 +48,8 @@ def one_line(text: str, limit: int = 1500) -> str:
 
 
 def compare(rt: Runtime) -> str:
-    items = {i["name"]: i for i in load_items()}
+    # 이름 → 법률 전체 항목, 표시 이름 → 부분 항목까지 (민법(총칙) · 민법(친족) … 은 이름이 모두 "민법")
+    items = {i["name"]: i for i in load_items() if not i.get("article_range")} | {i["label"]: i for i in load_items()}
     rows, details = [], []
     for n, (law, question, expect, trap) in enumerate(QUESTIONS, start=1):
         item = items[law]

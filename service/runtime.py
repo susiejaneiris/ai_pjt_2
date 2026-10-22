@@ -48,16 +48,17 @@ class Runtime:
 
 
 def ensure_meta_index(meta: Chroma) -> int:
-    """law_meta 가 비어 있으면 data/items.json 으로 바로 색인한다 (scripts/build_index.py 와 같은 내용).
+    """law_meta 가 비었거나 items.json 보다 적으면 바로 색인한다 (scripts/build_index.py 와 같은 내용).
 
     배포 서버(Streamlit Community Cloud 등)에는 vectorstore/ 가 없다 — 저장소에 올리지 않으므로.
-    처음 켜질 때 한 번 법률 108건을 임베딩한다 (약 20초). 외부 문서(law_docs)는 질문할 때 모은다.
+    처음 켜질 때 한 번 법률 276건을 임베딩한다 (수 초). 법률 목록을 늘린 뒤에도 같은 길로 채워진다.
+    외부 문서(law_docs)는 질문할 때 모은다.
     """
-    if count(meta) == 0:
+    from prep.item_text import build_item_text, item_metadata, load_items
+    items = load_items()
+    if count(meta) < len(items):
         from langchain_core.documents import Document
-        from prep.item_text import build_item_text, item_metadata, load_items
         from store.vectorstore import upsert
-        items = load_items()
         upsert(meta, [Document(page_content=build_item_text(i), metadata=item_metadata(i)) for i in items],
                [i["item_id"] for i in items])
     return count(meta)

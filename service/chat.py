@@ -6,7 +6,7 @@
 import time
 from dataclasses import dataclass, field
 
-from prep.collect import CollectReport, collect, today
+from prep.collect import CollectReport, collect, load_cache, restore_entry, today
 from rag.citations import cited_sources
 from service.runtime import Runtime
 from store.chunking import chunk_documents
@@ -34,10 +34,15 @@ def index_documents(rt: Runtime, raw_docs: list[dict]) -> int:
 
 
 def prepare_documents(rt: Runtime, item: dict, question: str, on_step=lambda m: None) -> CollectReport:
+    before = load_cache().get(item["item_id"])
     report = collect(item, question, rt.settings, rt.llm, on_step)
     if report.raw_docs:
         on_step(f"문서 {len(report.raw_docs)}개를 잘게 나눠 색인하는 중")
-        index_documents(rt, report.raw_docs)
+        try:
+            index_documents(rt, report.raw_docs)
+        except Exception:
+            restore_entry(item["item_id"], before)     # 다음 질문 때 다시 수집 · 색인하도록
+            raise
     return report
 
 

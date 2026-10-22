@@ -79,7 +79,8 @@ def main() -> None:
 
     rt = build_runtime()
     settings = load_settings()
-    items = {i["name"]: i for i in load_items()}
+    # 이름 → 법률 전체 항목, 표시 이름 → 부분 항목까지 (민법(총칙) · 민법(친족) … 은 이름이 모두 "민법")
+    items = {i["name"]: i for i in load_items() if not i.get("article_range")} | {i["label"]: i for i in load_items()}
     cache = json.loads(COLLECTED_JSON.read_text(encoding="utf-8"))
     questions = [q for q in json.loads((DATA_DIR / "eval_questions.json").read_text(encoding="utf-8"))
                  if not q["trap"]]

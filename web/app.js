@@ -17,7 +17,7 @@ const SAMPLE_QUESTIONS = {
   "근로기준법": ["5명 미만 가게 알바도 연차휴가를 받나요?", "주휴수당은 언제 받을 수 있나요?", "해고 예고 없이 잘렸어요"],
   "전자상거래 등에서의 소비자보호에 관한 법률": ["포장을 뜯으면 환불이 안 되나요?", "청약철회는 며칠 안에 해야 하나요?"],
 };
-const POPULAR = ["주택임대차보호법", "근로기준법", "최저임금법", "전자상거래 등에서의 소비자보호에 관한 법률"];
+const POPULAR = ["주택임대차보호법", "근로기준법", "전자상거래 등에서의 소비자보호에 관한 법률", "도로교통법", "형법", "민법(상속)"];   // 표시 이름(label)
 const GENERIC_QUESTIONS = ["이 법은 누구에게 적용되나요?", "이 법으로 내가 신청할 수 있는 게 있나요?", "이 법을 어기면 어떻게 되나요?"];
 
 const state = {
@@ -315,7 +315,7 @@ function renderLandingPanel() {
   } else if (state.panel === "popular") {
     box.className = "card landing-panel";
     box.innerHTML = `<h2>⭐ 자주 찾는 법</h2><div class="popular-grid">${POPULAR.map((name) =>
-      state.items.find((i) => i.name === name)).filter(Boolean).map((i) =>
+      state.items.find((i) => i.label === name)).filter(Boolean).map((i) =>
       `<button class="popular-card" data-item="${i.item_id}"><span class="badge">${esc(i.category)}</span>${esc(i.label)}</button>`).join("")}</div>`;
   } else if (state.panel === "situation") {
     renderFind(box);

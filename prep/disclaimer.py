@@ -2,7 +2,7 @@
 
     법률   모든 항목 — 법령 정보 안내일 뿐 법률 자문이 아니다
     금융   금융·신용 · 세금 분야 + 연금 · 기금 법률 — 대출 · 투자 · 세무 결정을 대신하지 않는다
-    건강   의료 · 응급 · 건강보험 · 식품위생 법률 — 진단 · 치료 판단을 대신하지 않는다
+    건강   의료·건강 분야 + 의료 · 응급 · 건강보험 · 식품위생 법률 — 진단 · 치료 판단을 대신하지 않는다
 
 화면(Streamlit · 웹)은 notices_for() 결과를 답변과 함께 그대로 보여 줍니다.
 """
@@ -15,8 +15,10 @@ HEALTH = ("🏥 건강 · 의료 관련 안내는 진단이나 치료 판단을 
           "증상이 있거나 응급 상황이면 의료기관 또는 119에 먼저 연락하세요.")
 
 FINANCE_CATEGORIES = {"금융·신용", "세금"}
-FINANCE_LAWS = {"국민연금법", "주택도시기금법"}
-HEALTH_LAWS = {"의료법", "응급의료에 관한 법률", "국민건강보험법", "식품위생법"}
+FINANCE_LAWS = {"국민연금법", "주택도시기금법", "기초연금법", "장애인연금법", "복권 및 복권기금법"}
+HEALTH_CATEGORIES = {"의료·건강"}
+HEALTH_LAWS = {"의료법", "응급의료에 관한 법률", "국민건강보험법", "식품위생법", "의료급여법",
+               "노인장기요양보험법", "어린이 식생활안전관리 특별법"}
 
 
 def risk_types(item: dict) -> list[str]:
@@ -24,7 +26,7 @@ def risk_types(item: dict) -> list[str]:
     risks = ["legal"]
     if item.get("category") in FINANCE_CATEGORIES or item.get("name") in FINANCE_LAWS:
         risks.append("finance")
-    if item.get("name") in HEALTH_LAWS:
+    if item.get("category") in HEALTH_CATEGORIES or item.get("name") in HEALTH_LAWS:
         risks.append("health")
     return risks
 

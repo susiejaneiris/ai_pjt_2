@@ -83,7 +83,8 @@ def clean(text: str) -> str:
 
 def search_laws(query: str) -> list[dict]:
     """① 법령명으로 현행 법령을 찾습니다. 항목 메타데이터의 재료입니다."""
-    data = request_law(SEARCH_URL, {"target": "law", "query": query})
+    # display 기본값은 20건 — "상법"처럼 이름이 다른 법령 이름에 많이 들어가면 정확히 같은 법이 밀려난다
+    data = request_law(SEARCH_URL, {"target": "law", "query": query, "display": 100})
     return [
         {
             "law_id": item["법령ID"],

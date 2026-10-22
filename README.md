@@ -1,7 +1,7 @@
-# ⚖️ 내일의 법 — 청년 생활법령 RAG 지식 서비스
+# ⚖️ 내일의 법 — 생활법령 RAG 지식 서비스
 
 > **내 일에 필요한 법, 내일을 위한 지식.**
-> 법을 잘 모르는 청년이 집 · 알바 · 쇼핑 · 돈 문제처럼 생활과 가까운 법을 가볍게 물어보면,
+> 법을 잘 모르는 누구나 집 · 일 · 가족 · 돈 · 건강 · 사고처럼 생활과 가까운 법을 가볍게 물어보면,
 > 실제 **법 조문 · 판례 · 법령해석례**를 찾아 **근거 번호와 원문 출처를 붙여** 답하는 서비스입니다.
 > 마스코트는 법복 입은 동글이 **로우(law)** 입니다.
 
@@ -28,8 +28,9 @@ cp .env.example .env                    # 아래 세 값을 채운다
 
 ### 데이터 준비 · 색인 (처음 한 번)
 ```bash
-python -m prep.build_items        # 법률 108건 메타데이터 수집 → data/items.json   (이미 포함됨)
+python -m prep.build_items        # 법률 276건(20개 분야) 메타데이터 수집 → data/items.json   (이미 포함됨)
 python -m prep.casebook           # 법령해석 사례집 PDF → data/casebook.json (312건) (이미 포함됨)
+python -m prep.kids_guide         # 어린이 생활법령 PDF → data/kids_guide.json (26개 주제) (이미 포함됨)
 python -m scripts.build_index     # RAG 1: 항목 메타데이터 임베딩 → law_meta 컬렉션
 python -m scripts.export_fallback # (선택) 외부 호출이 막힐 때 쓸 문서 묶음 → data/fallback/
 ```
@@ -55,7 +56,7 @@ python -m scripts.compare_rag         # RAG 사용 전후 답변 비교 → docs
 ### 필수
 | 번호 | 기능 | 구현 |
 |---|---|---|
-| F2001 | 항목 메타데이터 적재 | 법률 108건, 1건 = 법률명 · 분야 · 부처 · 시행일 · 목적 · 조문 제목 목록 텍스트 (`prep/item_text.py`) |
+| F2001 | 항목 메타데이터 적재 | 법률 276건 · 20개 분야, 1건 = 법률명 · 분야 · 부처 · 시행일 · 목적 · 조문 제목 목록 텍스트 (`prep/item_text.py`) |
 | F2002 | 메타데이터 색인 (RAG 1) | `law_meta` 컬렉션, id = item_id 로 다시 색인해도 덮어쓰기 (`scripts/build_index.py`) |
 | F2003 | 검색어 추출 (프롬프트 1) | 생활법령 전문가 역할, 일상어 → 법률 용어, JSON 배열 (`rag/prompts.py`) |
 | F2004 | 외부 문서 수집 (프롬프트 2) | 조문 · 판례 · 법령해석례 · 위키 후보를 제목 · 요약만 보고 선별 → 본문 + 원문 출처. 법률 자체 문서는 항상 수집. 외부 호출이 막히면 저장된 문서 묶음 사용 (`prep/collect.py`) |
@@ -85,7 +86,7 @@ NF2002 수집 캐시(`data/collected.json`) · NF2003 키는 `.env` · NF2004 �
 
 ```
 ⓪ 실행 전 (RAG 1)
-   data/item_list.csv(우리가 고른 법률 108개) ─► 법령 API ─► data/items.json ─► 항목 텍스트 ─► 임베딩 ─► [law_meta]
+   data/item_list.csv(우리가 고른 법률 276개) ─► 법령 API ─► data/items.json ─► 항목 텍스트 ─► 임베딩 ─► [law_meta]
    법령해석 사례집 PDF(1,402쪽) ─► 사례 312건 JSON (data/casebook.json)
 
 ① 질문마다 (RAG 2)
@@ -131,6 +132,7 @@ prep/                   데이터 준비 — 도메인에 묶인 코드는 여�
   law_api.py wiki_api.py   외부 출처 호출
   build_items.py item_text.py   항목 메타데이터 · 색인 텍스트
   casebook.py              법령해석 사례집 PDF → JSON
+  kids_guide.py            어린이 생활법령 PDF → JSON (생활법령 Q&A 후보)
   collect.py               프롬프트1 → 검색 → 프롬프트2 → 본문 (RAG 2 수집)
   disclaimer.py            법률 · 금융 · 건강 면책
 store/                  Vector Store — 컬렉션 · upsert · 청킹

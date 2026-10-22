@@ -1,4 +1,4 @@
-"""내일의 법 — 청년 생활법령 RAG 서비스 (Streamlit 화면 · F2009 ~ F2012).
+"""내일의 법 — 생활법령 RAG 서비스 (Streamlit 화면 · F2009 ~ F2012).
 
 실행:
     python -m scripts.build_index      # 처음 한 번 (법률 메타데이터 색인)
@@ -50,7 +50,8 @@ SAMPLE_SITUATIONS = [
     "온라인으로 산 물건을 환불받고 싶어요",
     "보이스피싱으로 돈을 보냈어요",
 ]
-POPULAR_LAWS = ["주택임대차보호법", "근로기준법", "최저임금법", "전자상거래 등에서의 소비자보호에 관한 법률"]
+POPULAR_LAWS = ["주택임대차보호법", "근로기준법", "전자상거래 등에서의 소비자보호에 관한 법률",
+                "도로교통법", "형법", "민법(상속)"]      # 표시 이름(label)
 SAMPLE_QUESTIONS = {
     "주택임대차보호법": ["전입신고한 날 집주인이 대출을 받으면 내 보증금이 먼저인가요?",
                     "계약갱신요구권은 몇 번, 몇 년 쓸 수 있나요?",
@@ -189,7 +190,7 @@ def get_items() -> list[dict]:
     return load_items()
 
 
-@st.cache_resource(show_spinner="로우가 법률 목록을 정리하는 중이에요… (처음 한 번, 20초쯤)")
+@st.cache_resource(show_spinner="로우가 법률 목록을 정리하는 중이에요… (처음 한 번만)")
 def get_runtime():
     return build_runtime()
 
@@ -207,7 +208,7 @@ def friendly_error(error: Exception) -> str:
 
 items = get_items()
 items_by_id = {i["item_id"]: i for i in items}
-items_by_name = {i["name"]: i for i in items}
+items_by_label = {i["label"]: i for i in items}
 categories = list(dict.fromkeys(i["category"] for i in items))
 
 try:
@@ -577,8 +578,8 @@ if not item:
     elif panel == "popular":
         with st.container(border=True):
             st.markdown("**⭐ 자주 찾는 법**")
-            render_law_cards([{"item": items_by_name[n], "reason": items_by_name[n]["category"] + " · "
-                               + items_by_name[n]["purpose"].split(")", 1)[-1].strip()[:60] + "…"}
+            render_law_cards([{"item": items_by_label[n], "reason": items_by_label[n]["category"] + " · "
+                               + items_by_label[n]["purpose"].split(")", 1)[-1].strip()[:60] + "…"}
                               for n in POPULAR_LAWS])
     elif panel == "situation":
         with st.container(border=True):

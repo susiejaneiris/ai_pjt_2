@@ -120,8 +120,10 @@ def law_articles(item_json: str) -> tuple[dict, ...]:
     articles = law_api.fetch_articles(item["mst"])
     if item.get("article_range"):
         start, end = map(int, item["article_range"].split("-"))
-        base = [a for a in articles if a["article"] in BASE_ARTICLES]
-        return tuple(base + [a for a in articles if start <= a["number"] <= end])
+        inside = [a for a in articles if start <= a["number"] <= end]
+        # 범위 밖일 때만 덧붙인다 — 민법(총칙)(1-184)은 제1조 · 제2조가 이미 범위 안 (중복 id 로 색인 실패)
+        base = [a for a in articles if a["article"] in BASE_ARTICLES and a not in inside]
+        return tuple(base + inside)
 
     decree_name = f"{item['name']} 시행령"
     decree = next((l for l in law_api.search_laws(decree_name) if l["name"] == decree_name), None)
@@ -232,6 +234,16 @@ def load_cache() -> dict:
 def save_cache(cache: dict) -> None:
     with open(COLLECTED_JSON, "w", encoding="utf-8") as f:
         json.dump(cache, f, ensure_ascii=False, indent=1)
+
+
+def restore_entry(item_id: str, entry: dict | None) -> None:
+    """수집 기록을 collect() 전으로 되돌린다 — 색인에 실패했는데 '수집함'으로 남으면 다시 수집되지 않는다."""
+    cache = load_cache()
+    if entry is None:
+        cache.pop(item_id, None)
+    else:
+        cache[item_id] = entry
+    save_cache(cache)
 
 
 def collected_doc_ids(entry: dict) -> set[str]:

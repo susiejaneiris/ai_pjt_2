@@ -3,6 +3,7 @@
 실행 (프로젝트 폴더에서):
     python -m scripts.evaluate                              # settings.json 그대로
     python -m scripts.evaluate --label topk3 --set top_k=3  # 설정을 바꿔 비교
+    python -m scripts.evaluate --label wide --questions data/eval_questions_wide.json  # 넓힌 분야 세트
     python -m scripts.evaluate --only Q01 Q09 T01           # 일부 질문만
 
 data/eval_questions.json — 질문 25개 (정상 21 · 함정 4), 질문마다 정답 조문
@@ -23,6 +24,7 @@ import argparse
 import json
 import time
 from datetime import datetime
+from pathlib import Path
 
 from config import DATA_DIR, ROOT
 from prep.item_text import load_items
@@ -47,10 +49,11 @@ def parse_value(text: str):
 
 
 def evaluate(rt: Runtime, questions: list[dict], on_row=print) -> list[dict]:
-    items = {i["name"]: i for i in load_items()}
+    # 이름 → 법률 전체 항목, 표시 이름 → 부분 항목까지 (민법(총칙) · 민법(친족) … 은 이름이 모두 "민법")
+    items = {i["name"]: i for i in load_items() if not i.get("article_range")} | {i["label"]: i for i in load_items()}
     rows = []
     for q in questions:
-        item = items[q["law"]]
+        item = items[q.get("item", q["law"])]     # "item" 은 부분 항목을 고를 때만 (예: 민법(총칙))
         started = time.perf_counter()
         try:
             result = ask(rt, item, q["question"], history=[])
@@ -137,10 +140,11 @@ def main() -> None:
     parser.add_argument("--label", default="baseline")
     parser.add_argument("--set", nargs="*", default=[], metavar="KEY=VALUE", help="settings.json 값 바꾸기")
     parser.add_argument("--only", nargs="*", default=[], metavar="ID")
+    parser.add_argument("--questions", default=str(QUESTIONS), help="질문 세트 파일 (기본 data/eval_questions.json)")
     args = parser.parse_args()
 
     overrides = {k: parse_value(v) for k, v in (s.split("=", 1) for s in args.set)}
-    questions = json.loads(QUESTIONS.read_text(encoding="utf-8"))
+    questions = json.loads(Path(args.questions).read_text(encoding="utf-8"))
     if args.only:
         questions = [q for q in questions if q["id"] in args.only]
 
