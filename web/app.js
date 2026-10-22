@@ -171,6 +171,9 @@ function answerHtml(data, latest = false) {
 }
 
 // 가장 최근 답변은 근거를 펼쳐 둔다
+/** 법률 이름에 마우스를 올리면 뜨는 쉬운 설명 말풍선 (prep/easy_explain.py) */
+const tipAttr = (item) => (item && item.easy ? ` data-tip="${esc(item.easy)}" tabindex="0"` : "");
+
 const replyHtml = (data, latest = false) =>
   `<div class="reply"><img src="${MASCOT("avatar")}" alt="로우"><div class="paper">${answerHtml(data, latest)}</div></div>`;
 
@@ -320,7 +323,7 @@ function renderLandingPanel() {
     box.className = "card landing-panel";
     box.innerHTML = `<h2>⭐ 자주 찾는 법</h2><div class="popular-grid">${POPULAR.map((name) =>
       state.items.find((i) => i.label === name)).filter(Boolean).map((i) =>
-      `<button class="popular-card" data-item="${i.item_id}"><span class="badge">${esc(i.category)}</span>${esc(i.label)}</button>`).join("")}</div>`;
+      `<button class="popular-card" data-item="${i.item_id}"><span class="badge">${esc(i.category)}</span><span class="law-name"${tipAttr(i)}>${esc(i.label)}</span></button>`).join("")}</div>`;
   } else if (state.panel === "situation") {
     renderFind(box);
     box.classList.add("landing-panel");
@@ -330,7 +333,7 @@ function renderLandingPanel() {
     box.innerHTML = `<p class="muted" style="margin:0 0 8px">‘${esc(q)}’ — ${kind === "name" ? "이름이 맞는 법률" : "상황에 맞는 법"}</p>
       ${results.length ? `<div class="results">${results.map((r) => `
         <div class="result"><span class="badge" style="align-self:flex-start">${esc(r.category)}</span>
-          <h3>${esc(r.label)}</h3>${r.reason ? `<p>${esc(r.reason)}</p>` : ""}
+          <h3 class="law-name"${tipAttr(state.byId[r.item_id])}>${esc(r.label)}</h3>${r.reason ? `<p>${esc(r.reason)}</p>` : ""}
           <button class="btn ghost" data-item="${r.item_id}" ${kind === "situation" ? `data-ask="${esc(q)}"` : ""}>이 법으로 물어보기 →</button></div>`).join("")}</div>`
         : note("thinking", "꼭 맞는 법을 찾지 못했어요. 상황을 조금 더 구체적으로 적어 주세요.")}`;
   } else {
@@ -550,7 +553,7 @@ function findResultHtml() {
   return `<p class="muted" style="margin:14px 0 0">‘${esc(state.found.condition)}’에 맞는 법</p>
     <div class="results">${state.found.results.map((r) => `
       <div class="result"><span class="badge" style="align-self:flex-start">${esc(r.category)}</span>
-        <h3>${esc(r.label)}</h3><p>${esc(r.reason)}</p>
+        <h3 class="law-name"${tipAttr(state.byId[r.item_id])}>${esc(r.label)}</h3><p>${esc(r.reason)}</p>
         <button class="btn ghost" data-item="${r.item_id}" data-ask="${esc(state.found.condition)}">이 법으로 물어보기 →</button></div>`).join("")}</div>`;
 }
 

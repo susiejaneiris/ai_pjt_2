@@ -29,6 +29,7 @@ from openai import APIConnectionError, AuthenticationError
 from config import ROOT
 from prep.casebook import KOGL_NOTICE
 from prep.disclaimer import LEGAL, notices_for
+from prep.easy_explain import load_easy
 from prep.item_text import load_items
 from rag.prompts import NOT_FOUND
 
@@ -126,6 +127,16 @@ st.markdown("""
   font-size:5.5rem; color:rgba(201,164,76,.13); }
 .case-label { font-size:.74rem; letter-spacing:.12em; color:var(--gold-ink); font-weight:700; }
 .case-head h1 { font-size:1.55rem; font-weight:800; letter-spacing:-.02em; color:var(--navy); margin:2px 0 8px; padding:0; }
+/* 카드의 법률 이름 — 마우스를 올리거나(키보드 Tab 으로 가도) 쉬운 설명 말풍선 */
+.law-name { font-weight:700; color:#1f2a44; position:relative; }
+.law-name[data-tip] { cursor:help; text-decoration: underline dotted var(--gold); text-underline-offset: 4px; }
+.law-name[data-tip]:hover::after, .law-name[data-tip]:focus::after { content: attr(data-tip); position:absolute; left:0; top: calc(100% + 8px);
+  z-index: 1000; width: max-content; max-width: 300px; padding: 10px 12px; border-radius: 12px; background: var(--navy); color: #fff;
+  font-size: .82rem; font-weight: 500; line-height: 1.55; white-space: normal; word-break: keep-all; box-shadow: 0 8px 22px rgba(31,42,68,.22); }
+.law-name[data-tip]:hover::before, .law-name[data-tip]:focus::before { content:""; position:absolute; left:14px; top: calc(100% + 2px);
+  border: 6px solid transparent; border-bottom-color: var(--navy); border-top: 0; z-index: 1001; }
+/* 말풍선이 카드 · 고정 바닥글(z-index 50) 위로 나오게 — 마우스를 올린 카드를 앞으로 */
+[data-testid="stVerticalBlockBorderWrapper"]:has(.law-name:hover), [data-testid="stElementContainer"]:has(.law-name:hover) { z-index: 1000; position: relative; }
 .badge { display:inline-block; font-size:.74rem; padding:2px 10px; border-radius:999px; margin:0 4px 4px 0;
   background:var(--paper-2); border:1px solid var(--line); color:var(--gold-ink); }
 
@@ -206,7 +217,8 @@ st.markdown("""
 
 @st.cache_data
 def get_items() -> list[dict]:
-    return load_items()
+    easy = load_easy()          # 법을 몰라도 알 수 있는 한두 문장 (prep/easy_explain.py)
+    return [{**i, "easy": easy.get(i["item_id"], "")} for i in load_items()]
 
 
 @st.cache_resource(show_spinner="로우가 법률 목록을 정리하는 중이에요… (처음 한 번만)")
@@ -257,6 +269,12 @@ def input_loading(key: str):
 @keyframes input-spin {{ to {{ transform: rotate(360deg); }} }}
 </style>""", unsafe_allow_html=True)
     return spot
+
+
+def law_title_html(law: dict) -> str:
+    """카드의 법률 이름 — 마우스를 올리면 쉬운 설명 말풍선 (설명이 없으면 이름만)."""
+    tip = f" data-tip='{esc(law['easy'])}' tabindex='0'" if law.get("easy") else ""
+    return f"<b class='law-name'{tip}>{esc(law['label'])}</b>"
 
 
 def note(pose: str, text_html: str, width: int = 84, cls: str = "") -> None:
@@ -493,7 +511,7 @@ def render_find_laws() -> None:
             law = r["item"]
             with cols[n % 2].container(border=True):
                 st.markdown(f"<span class='badge'>{esc(law['category'])}</span><br>"
-                            f"<b style='font-weight:700;color:#1f2a44'>{esc(law['label'])}</b>",
+                            + law_title_html(law),
                             unsafe_allow_html=True)
                 st.caption(r["reason"])
                 st.button("이 법으로 물어보기 →", key=f"pick_{law['item_id']}",
@@ -515,7 +533,7 @@ def render_law_cards(results: list[dict], question: str | None = None) -> None:
         law = r["item"]
         with cols[n % 2].container(border=True):
             st.markdown(f"<span class='badge'>{esc(law['category'])}</span><br>"
-                        f"<b style='font-weight:700;color:#1f2a44'>{esc(law['label'])}</b>",
+                        + law_title_html(law),
                         unsafe_allow_html=True)
             if r.get("reason"):
                 st.caption(r["reason"])
@@ -651,8 +669,8 @@ if not item:
         elif panel == "popular":
             with st.container(border=True):
                 st.markdown("**⭐ 자주 찾는 법**")
-                render_law_cards([{"item": items_by_label[n], "reason": items_by_label[n]["category"] + " · "
-                                   + items_by_label[n]["purpose"].split(")", 1)[-1].strip()[:60] + "…"}
+                render_law_cards([{"item": items_by_label[n], "reason": items_by_label[n]["easy"]   # 쉬운 설명
+                                   or items_by_label[n]["purpose"].split(")", 1)[-1].strip()[:60] + "…"}
                                   for n in POPULAR_LAWS])
         elif panel == "situation":
             with st.container(border=True):

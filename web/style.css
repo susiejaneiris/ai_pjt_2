@@ -396,3 +396,12 @@ body.landing footer img { width: 40px; }
 
 /* 처음 자리를 잡는 동안에는 위치 애니메이션을 끈다 (새로고침 직후 위에서 내려오는 움직임 방지) */
 body.no-anim .layout { transition: none !important; }
+
+/* 법률 이름 — 마우스를 올리면 쉬운 설명 말풍선 */
+.law-name { position: relative; }
+.law-name[data-tip] { cursor: help; text-decoration: underline dotted var(--gold); text-underline-offset: 4px; }
+.law-name[data-tip]:hover::after, .law-name[data-tip]:focus::after { content: attr(data-tip); position: absolute; left: 0; top: calc(100% + 8px);
+  z-index: 1000; width: max-content; max-width: 300px; padding: 10px 12px; border-radius: 12px; background: var(--navy); color: #fff;
+  font-size: .82rem; font-weight: 500; line-height: 1.55; white-space: normal; word-break: keep-all; text-align: left;
+  box-shadow: 0 8px 22px rgba(31,42,68,.22); }
+.result:has(.law-name:hover), .popular-card:has(.law-name:hover) { position: relative; z-index: 1000; overflow: visible; }

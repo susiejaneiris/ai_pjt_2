@@ -33,6 +33,7 @@ from pydantic import BaseModel, Field
 from config import ROOT
 from prep.casebook import KOGL_NOTICE
 from prep.disclaimer import notices_for, risk_types
+from prep.easy_explain import load_easy
 from prep.item_text import load_items
 from service.chat import Result
 from service.features import article_choices, explain, factcheck
@@ -46,7 +47,8 @@ app = FastAPI(title="내일의 법 API")
 app.mount("/static", StaticFiles(directory=ROOT / "web"), name="static")
 app.mount("/mascot", StaticFiles(directory=ROOT / "assets" / "mascot"), name="mascot")
 
-ITEMS = load_items()
+EASY = load_easy()          # 법을 몰라도 알 수 있는 한두 문장 (prep/easy_explain.py)
+ITEMS = [{**i, "easy": EASY.get(i["item_id"], "")} for i in load_items()]
 ITEMS_BY_ID = {i["item_id"]: i for i in ITEMS}
 
 
@@ -97,7 +99,7 @@ def get_item(item_id: str) -> dict:
 
 
 def public_item(item: dict) -> dict:
-    keys = ("item_id", "label", "name", "category", "ministry", "effective_date", "url")
+    keys = ("item_id", "label", "name", "category", "ministry", "effective_date", "url", "easy")
     return {**{k: item[k] for k in keys}, "risks": risk_types(item)}
 
 
