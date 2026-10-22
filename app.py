@@ -297,15 +297,29 @@ def cite_badges(text: str) -> str:
     return CITE.sub(lambda m: f":orange-badge[근거 {m.group(1).replace(' ', '')}]", text)
 
 
+BOLD = re.compile(r"\*\*(.+?)\*\*", re.S)
+
+
+def answer_markdown(text: str) -> str:
+    """답변의 **굵게** 를 <b> 로 직접 바꾼다 — 화면에 ** 가 그대로 보이지 않게.
+
+    마크다운은 "**고등학생(미성년자 여부)**에 따라" 처럼 닫는 ** 앞이 문장부호이고 뒤에 한글이 붙으면
+    굵게로 인정하지 않아 ** 를 글자로 남긴다 (한국어에서 자주 생긴다). 먼저 HTML 을 이스케이프해
+    답변에 섞인 태그는 글자로만 보이게 하고, 짝이 맞지 않아 남은 ** 는 지운다.
+    """
+    text = html.escape(text, quote=False)
+    return BOLD.sub(r"<b>\1</b>", text).replace("**", "")
+
+
 def render_answer(message: dict, latest: bool = False, show_summary: bool = True) -> None:
     if message["content"].startswith(NOT_FOUND):
         note("thinking", f"<b>{NOT_FOUND}</b><br><span class='small-note'>질문을 조금 바꾸거나, "
                          "‘법 찾기’에서 다른 법을 골라 보세요.</span>", 72)
         rest = message["content"][len(NOT_FOUND):].strip()
         if rest:
-            st.markdown(rest)
+            st.markdown(answer_markdown(rest), unsafe_allow_html=True)
     else:
-        st.markdown(cite_badges(message["content"]))
+        st.markdown(cite_badges(answer_markdown(message["content"])), unsafe_allow_html=True)
     for warning in message.get("warnings", []):
         st.caption(f"⚠️ {warning}")
     render_sources(message.get("cited", []), expanded=latest)

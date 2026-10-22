@@ -35,6 +35,7 @@ const esc = (text) => String(text ?? "").replace(/[&<>"']/g,
 function inline(text) {
   return text
     .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+    .replace(/\*\*/g, "")                                  // 짝이 맞지 않아 남은 ** 는 지운다
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\[근거\s*([\d,\s]+)\]/g, (_, n) => `<span class="cite">근거 ${n.replace(/\s/g, "")}</span>`);
 }
