@@ -164,8 +164,21 @@ st.markdown("""
 /* 입력칸 안내 한글화 — Streamlit 기본 "Press Enter to submit form" 은 바꾸는 설정이 없어 숨기고 같은 자리에 넣는다 */
 [data-testid="InputInstructions"] { font-size: 0 !important; }
 [data-testid="InputInstructions"] > * { display: none !important; }
-[data-testid="InputInstructions"]::after { content: "Enter를 눌러 검색"; font-size: .75rem; color: var(--muted); }
-[data-testid="stTextArea"] [data-testid="InputInstructions"]::after { content: "Ctrl+Enter를 눌러 판정"; }
+/* 키보드 키처럼 생긴 작은 배지 — 회색 작은 글씨는 입력칸 테두리에 묻혀 잘 보이지 않았다 */
+[data-testid="InputInstructions"]::after { content: "↵ Enter로 검색"; font-size: .78rem; font-weight: 700; color: var(--navy);
+  background: var(--gold-soft); border: 1px solid var(--gold); border-bottom-width: 2px; border-radius: 7px;
+  padding: 2px 9px; white-space: nowrap; }
+[data-testid="stTextArea"] [data-testid="InputInstructions"]::after { content: "Ctrl + ↵ Enter로 판정"; }
+/* 한 줄 입력칸 — 배지를 오른쪽 세로 가운데에, 글자가 배지 밑으로 들어가지 않게 오른쪽 여백.
+   안내의 기준 상자는 입력칸 맨 아래에 붙은 높이 0 상자 → 아래에서 (입력칸 높이 − 배지 20px) / 2 만큼 올린다 */
+[data-testid="stTextInput"] [data-testid="InputInstructions"] { position: absolute; right: 10px; top: auto; bottom: 10px;
+  pointer-events: none; }
+[data-testid="stTextInput"] input { padding-right: 128px; }
+.st-key-main_search [data-testid="InputInstructions"] { right: 16px; bottom: 16px; }      /* 큰 검색창 52px */
+.st-key-main_search input { padding-right: 150px !important; }
+/* 좁은 사이드바는 짧게 */
+[data-testid="stSidebar"] [data-testid="InputInstructions"]::after { content: "↵ Enter"; }
+[data-testid="stSidebar"] [data-testid="stTextInput"] input { padding-right: 78px; }
 
 /* 사이드바 — 한국어는 글자 단위로 끊기면 읽기 어렵다 → 단어 단위 줄바꿈 */
 [data-testid="stSidebar"] { word-break: keep-all; overflow-wrap: anywhere; }
