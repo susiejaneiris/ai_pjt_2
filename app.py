@@ -34,6 +34,7 @@ from prep.item_text import load_items
 from rag.prompts import NOT_FOUND
 
 from service.features import article_choices, explain, factcheck
+from service.complex import answer_complex, decompose
 from service.find_laws import find_laws
 from service.offline import QUOTA_MESSAGE, ask_or_offline, is_quota_error
 from service.runtime import build_runtime
@@ -396,6 +397,7 @@ def go_home() -> None:
     st.session_state.shown_item = None          # 같은 법률에 다시 들어와도 맨 위부터
     st.session_state.panel = None
     st.session_state.search_result = None
+    st.session_state.complex = None
     st.session_state.found = None
     st.session_state.auto_question = None
     for key in ("main_query", "find_condition", "landing_law_search"):
@@ -526,6 +528,24 @@ def toggle_panel(name: str) -> None:
     st.session_state.panel = None if st.session_state.get("panel") == name else name
 
 
+def render_complex(saved: dict) -> None:
+    """쟁점 나누기 결과 — 쟁점 목록(법률로 더 물어보기) · 가정 · 쟁점별 답변."""
+    issues = saved["issues"]
+    st.caption(f"‘{saved['q']}’ — 여러 법이 얽혀 있어 쟁점 {len(issues)}개로 나눠 살펴봤어요")
+    with st.container(border=True):
+        note("magnifier", "<b>쟁점별로 정리했어요.</b> 한 가지를 더 자세히 알고 싶으면 그 법을 눌러 이어서 물어보세요.", 64)
+        for n, issue in enumerate(issues, start=1):
+            st.markdown(f"**{n}. {esc(issue['title'])}**")
+            with st.container(horizontal=True):
+                for item_id in issue["laws"]:
+                    law = items_by_id[item_id]
+                    st.button(f"📜 {law['label']}", key=f"issue_{n}_{item_id}", width="content",
+                              on_click=select_item, args=(item_id,), help=law.get("easy") or None)
+        if saved["assumptions"]:
+            st.caption("이렇게 가정하고 살펴봤어요 — " + " · ".join(saved["assumptions"]))
+    render_answer(saved["message"], latest=True)
+
+
 def render_law_cards(results: list[dict], question: str | None = None) -> None:
     """question 이 있으면(상황 검색 결과) 카드를 눌렀을 때 그 문장을 바로 물어본다."""
     cols = st.columns(2)
@@ -639,16 +659,34 @@ if not item:
             named = [i for i in items if q.replace(" ", "") in i["label"].replace(" ", "")
                      or (i.get("abbr") and q.replace(" ", "") in i["abbr"])]
             st.session_state.panel = None
+            st.session_state.complex = None
             if named:
                 st.session_state.search_result = (q, [{"item": i, "reason": ""} for i in named[:6]], "name")
             else:
+                st.session_state.search_result = None
                 loading = input_loading("main_query")
-                with st.spinner("로우가 상황에 맞는 법을 찾는 중…"):
-                    try:
-                        st.session_state.search_result = (q, find_laws(rt, q, items_by_id), "situation")
-                    except Exception as error:
-                        log.exception("find_laws")
-                        st.error(friendly_error(error))
+                try:
+                    # 여러 법이 얽힌 긴 상황이면 쟁점별로 나눠 바로 답한다 (service/complex.py) — 아니면 법률 카드
+                    with st.spinner("로우가 상황을 살펴보는 중…"):
+                        plan = decompose(rt, q, items)
+                    if plan:
+                        result, summary = run_with_status(
+                            f"쟁점 {len(plan['issues'])}개를 하나씩 살펴보고 있어요",
+                            lambda step: answer_complex(rt, q, plan, on_step=step))
+                        if result:
+                            st.session_state.complex = {
+                                "q": q, "assumptions": plan["assumptions"],
+                                "issues": [{"title": i["title"], "laws": [l["item_id"] for l in i["laws"]]}
+                                           for i in plan["issues"]],
+                                "message": {"role": "assistant", "content": result.answer, "cited": result.cited,
+                                            "warnings": result.warnings, "notices": result.notices,
+                                            "summary": summary}}
+                    else:
+                        with st.spinner("로우가 상황에 맞는 법을 찾는 중…"):
+                            st.session_state.search_result = (q, find_laws(rt, q, items_by_id), "situation")
+                except Exception as error:
+                    log.exception("search")
+                    st.error(friendly_error(error))
                 loading.empty()
 
         panel = st.session_state.panel
@@ -675,6 +713,8 @@ if not item:
         elif panel == "situation":
             with st.container(border=True):
                 render_find_laws()
+        elif st.session_state.get("complex"):
+            render_complex(st.session_state.complex)
         elif st.session_state.get("search_result"):
             q, results, kind = st.session_state.search_result
             st.caption(f"‘{q}’ " + ("— 이름이 맞는 법률" if kind == "name" else "— 상황에 맞는 법"))
@@ -684,7 +724,8 @@ if not item:
                 note("thinking", "꼭 맞는 법을 찾지 못했어요. 상황을 조금 더 구체적으로 적어 주세요.", 72)
 
         # 처음엔 로우 ~ 작은 버튼 덩어리(약 470px)를 세로 가운데에, 패널 · 결과가 열리면 위로 올린다
-        active = bool(st.session_state.panel or st.session_state.get("search_result"))
+        active = bool(st.session_state.panel or st.session_state.get("search_result")
+                      or st.session_state.get("complex"))
         top = "4.5rem" if active else "max(4.5rem, calc((100vh - 150px - 470px) / 2))"      # 4.5rem — 상단 막대 아래부터
         # 첫 화면을 처음 그릴 때는 애니메이션 없이 바로 가운데에 — 이후 버튼으로 오르내릴 때만 부드럽게 움직인다
         motion = "transition: padding-top .45s cubic-bezier(.2, .8, .2, 1);" if st.session_state.get("landing_drawn") else ""
