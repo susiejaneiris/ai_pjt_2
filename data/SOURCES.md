@@ -4,7 +4,7 @@
 
 | 데이터 | 출처 | 받는 방법 | 이용 조건 | 기록 위치 |
 |---|---|---|---|---|
-| 항목 메타데이터 (법률 108건) | 국가법령정보센터 Open API (https://open.law.go.kr) | `lawSearch.do` · `lawService.do` (target=law) | 활용 신청 후 발급한 OC 로 호출. 법령은 저작권법 제7조에 따라 보호받지 않는 저작물. 출처 표시 | `data/items.json` 의 `source` · `collected_at` |
+| 항목 메타데이터 (법률 276건, 20개 분야) | 국가법령정보센터 Open API (https://open.law.go.kr) | `lawSearch.do` · `lawService.do` (target=law) | 활용 신청 후 발급한 OC 로 호출. 법령은 저작권법 제7조에 따라 보호받지 않는 저작물. 출처 표시 | `data/items.json` 의 `source` · `collected_at` |
 | 외부 문서 — 조문 (법률 · 시행령) | 국가법령정보센터 Open API | `lawService.do` (target=law) | 위와 같음 | 청크 메타데이터 `url` · `date`(시행일) · `collected_at` |
 | 외부 문서 — 판례 | 국가법령정보센터 Open API | `lawSearch.do` · `lawService.do` (target=prec) | 판결은 저작권법 제7조에 따라 보호받지 않는 저작물. 출처 표시 | 청크 메타데이터 `url` · `date`(선고일) |
 | 외부 문서 — 법령해석례 (PDF) | 법제처, 「2024 법령해석 사례집」(상) 692쪽 · (하) 710쪽 — 공공데이터포털(https://www.data.go.kr)에서 내려받음 | `data/pdf/` 원본 → `python -m prep.casebook` → `data/casebook.json` (312건) | **공공누리 제4유형** (출처표시 + 상업적 이용금지 + 변경금지). 비영리 교육 과제로만 사용한다. 변경금지를 지키기 위해 사례 본문(질의요지 · 회답 · 이유)의 문장은 고치지 않고 그대로 발췌하며(쪽 머리글 · 각주 표시 같은 조판 요소만 분리), 근거마다 "법제처, 「2024 법령해석 사례집」(상/하), 쪽"으로 출처를 표시한다. 답변은 원문을 바꿔 다시 배포하는 것이 아니라 원문을 근거로 인용하는 형태로만 쓴다 | 청크 메타데이터 `citation` (예: 법제처, 「2024 법령해석 사례집」(하), 1149~1152쪽) |
