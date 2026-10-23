@@ -172,6 +172,12 @@ st.markdown("""
 .st-key-scroll_top { display:none; }
 .stTabs [data-testid="stTab"][aria-selected="true"] p { color:#fff; }
 [data-testid="stChatMessage"] { background:transparent; }
+/* 답변 속 제목(LLM 이 쓰는 ## · ###) — 화면 제목만큼 크면 답변이 산만하다 → 본문보다 조금 크게만 */
+[data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] :is(h1, h2, h3, h4),
+[data-testid="stTabPanel"] [data-testid="stMarkdownContainer"] :is(h1, h2, h3, h4),
+.st-key-landing [data-testid="stMarkdownContainer"] :is(h1, h2, h3, h4) {
+  font-size: 1.12rem !important; font-weight: 700; color: var(--navy); margin: 1rem 0 .35rem; padding: 0; }
+.st-key-landing .landing-brand .name { font-size: 2.4rem !important; }
 [data-testid="stImage"] img { pointer-events:none; }
 .stButton > button { border-radius:999px; }
 /* 입력칸 안내 한글화 — Streamlit 기본 "Press Enter to submit form" 은 바꾸는 설정이 없어 숨기고 같은 자리에 넣는다 */
@@ -230,11 +236,11 @@ def get_runtime():
 def friendly_error(error: Exception) -> str:
     """화면에는 쉬운 안내만 — 키 · 프롬프트 · 오류 추적 정보는 보여 주지 않는다 (NF2004)."""
     if isinstance(error, MissingKeyError):
-        return "GMS_KEY가 설정되지 않았어요. `.env` 파일에 키를 넣고 다시 실행해 주세요."
+        return "GMS_KEY가 설정되지 않았어요. .env 파일에 키를 넣고 다시 실행해 주세요."
     if is_quota_error(error):
         return QUOTA_MESSAGE
     if isinstance(error, AuthenticationError):
-        return "GMS 키가 만료되었거나 올바르지 않아요. 키를 다시 발급받아 `.env`에 넣어 주세요."
+        return "GMS 키가 만료되었거나 올바르지 않아요. 키를 다시 발급받아 .env 파일에 넣어 주세요."
     if isinstance(error, APIConnectionError):
         return "AI 서버에 연결하지 못했어요. 네트워크를 확인하고 잠시 뒤 다시 시도해 주세요."
     return "처리하는 중에 문제가 생겼어요. 잠시 뒤 다시 시도해 주세요."
@@ -760,9 +766,11 @@ if not item:
 # ── 법률을 고른 뒤: 사건 기록부 + 탭 ───────────────────────────────────────────────
 
 # 법률 화면에 처음 들어오면 맨 위로 — 첫 화면에서 검색 결과를 보려고 내린 스크롤이 그대로 남아 윗부분이 잘려 보인다
-if st.session_state.get("shown_item") != item["item_id"]:
-    st.session_state.shown_item = item["item_id"]
-    with st.container(key="scroll_top"):
+# 자리(컨테이너)는 항상 둔다 — 처음에만 생기면 아래 탭의 순번이 실행마다 달라져 Streamlit 이 탭을 새로 만들고
+# 첫 탭으로 되돌린다 (사실일까? 판정 직후 물어보기 탭으로 튀던 문제)
+with st.container(key="scroll_top"):
+    if st.session_state.get("shown_item") != item["item_id"]:
+        st.session_state.shown_item = item["item_id"]
         st.iframe("<script>const m = window.parent.document.querySelector('[data-testid=\"stMain\"]');"
                   "if (m) m.scrollTo({top: 0});</script>", height=1)      # 고정 문자열만 — 사용자 입력은 넣지 않는다
 
@@ -778,7 +786,9 @@ st.markdown(f"""
 for notice in notices_for(item)[1:]:          # 금융 · 건강 항목은 맨 위에 한 번 더 (F2012)
     st.info(notice)
 
-tab_chat, tab_fact, tab_explain, tab_find = st.tabs(["💬 물어보기", "⚖️ 사실일까?", "📜 조문 쉽게 읽기", "🔎 법 찾기"])
+# 법률마다 key — 같은 법률 안에서는 고른 탭을 유지하고, 다른 법률로 가면 물어보기부터
+tab_chat, tab_fact, tab_explain, tab_find = st.tabs(["💬 물어보기", "⚖️ 사실일까?", "📜 조문 쉽게 읽기", "🔎 법 찾기"],
+                                                    key=f"tabs_{item['item_id']}")
 
 # 💬 물어보기 — 법률별로 대화를 따로 둔다 (F2009)
 with tab_chat:
